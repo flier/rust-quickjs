@@ -1,0 +1,2 @@
+[workspace]
+members = ["quickjs-sys", "quickjs-core", "quickjs-runtime", "quickjs-compiler"]
