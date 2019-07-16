@@ -30,6 +30,8 @@ impl ContextRef {
     }
 
     pub fn set_userdata<T>(&self, userdata: Option<NonNull<T>>) -> &Self {
+        trace!("{:?} set userdata to {:?}", self, userdata);
+
         unsafe {
             ffi::JS_SetContextOpaque(
                 self.as_ptr(),
@@ -40,6 +42,8 @@ impl ContextRef {
     }
 
     pub fn set_max_stack_size(&self, stack_size: usize) -> &Self {
+        trace!("{:?} set stack size to {:?}", self, stack_size);
+
         unsafe {
             ffi::JS_SetMaxStackSize(self.as_ptr(), stack_size);
         }

@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate log;
+#[macro_use]
 extern crate foreign_types;
 
 use quickjs_sys as ffi;
