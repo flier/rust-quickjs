@@ -81,7 +81,7 @@ fn gen_binding_files() -> Result<(), Error> {
         .clang_arg(format!("-I{}", quickjs_dir.to_string_lossy()))
         .whitelist_var("JS_.*")
         .whitelist_type("JS.*")
-        .whitelist_function("(JS|js)_.*")
+        .whitelist_function("(__)?(JS|JS|js)_.*")
         .opaque_type("FILE")
         .blacklist_type("__.*")
         .default_enum_style(bindgen::EnumVariation::ModuleConsts)

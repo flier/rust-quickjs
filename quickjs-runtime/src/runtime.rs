@@ -7,6 +7,10 @@ use crate::ffi;
 const NO_LIMIT: isize = -1;
 
 foreign_type! {
+    /// `Runtime` represents a Javascript runtime corresponding to an object heap.
+    ///
+    /// Several runtimes can exist at the same time but they cannot exchange objects.
+    /// Inside a given runtime, no multi-threading is supported.
     pub type Runtime : Send {
         type CType = ffi::JSRuntime;
 

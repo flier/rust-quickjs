@@ -5,6 +5,11 @@ use foreign_types::{ForeignType, ForeignTypeRef};
 use crate::{ffi, RuntimeRef};
 
 foreign_type! {
+    /// `Context` represents a Javascript context (or Realm).
+    ///
+    /// Each `Context` has its own global objects and system objects.
+    /// There can be several `Contexts` per `Runtime` and they can share objects,
+    /// similary to frames of the same origin sharing Javascript objects in a web browser.
     pub type Context : Send {
         type CType = ffi::JSContext;
 

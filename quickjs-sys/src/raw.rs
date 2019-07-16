@@ -1309,6 +1309,12 @@ extern "C" {
     pub fn JS_ThrowOutOfMemory(ctx: *mut JSContext) -> JSValue;
 }
 extern "C" {
+    pub fn __JS_FreeValue(ctx: *mut JSContext, v: JSValue);
+}
+extern "C" {
+    pub fn __JS_FreeValueRT(rt: *mut JSRuntime, v: JSValue);
+}
+extern "C" {
     pub fn JS_ToBool(ctx: *mut JSContext, val: JSValue) -> ::std::os::raw::c_int;
 }
 extern "C" {
