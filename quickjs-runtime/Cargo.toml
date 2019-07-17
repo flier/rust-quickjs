@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 log = "0.4"
+failure = "0.1"
+bitflags = "1.1"
 foreign-types = "0.4"
 
 quickjs-sys = { version = "0.1", path = "../quickjs-sys" }

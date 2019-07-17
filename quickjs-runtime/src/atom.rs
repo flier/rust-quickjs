@@ -3,7 +3,7 @@ use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, RuntimeRef, Value, value::CStrBuf};
+use crate::{ffi, value::CStrBuf, ContextRef, RuntimeRef, Value};
 
 pub type Atom = ffi::JSAtom;
 
@@ -63,6 +63,8 @@ impl ContextRef {
     }
 
     pub fn atom_to_cstr(&self, atom: Atom) -> CStrBuf {
-        CStrBuf(self, unsafe { CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom)) })
+        CStrBuf(self, unsafe {
+            CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom))
+        })
     }
 }

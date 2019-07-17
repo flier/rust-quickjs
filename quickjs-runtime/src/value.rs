@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
 use std::ptr::NonNull;
@@ -6,13 +7,29 @@ use std::slice;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{
-    ffi::{self, _bindgen_ty_1::*},
-    ContextRef, RuntimeRef,
-};
+pub use crate::ffi::_bindgen_ty_1::*;
+use crate::{ffi, ContextRef, RuntimeRef};
 
 #[repr(transparent)]
 pub struct Value(ffi::JSValue);
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe {
+            match self.tag() {
+                JS_TAG_INT => f.debug_tuple("Value").field(&self.0.u.int32).finish(),
+                JS_TAG_BOOL => f
+                    .debug_tuple("Value")
+                    .field(&(self.0.u.int32 != FALSE))
+                    .finish(),
+                JS_TAG_NULL => f.write_str("Null"),
+                JS_TAG_UNDEFINED => f.write_str("Undefined"),
+                JS_TAG_UNINITIALIZED => f.write_str("Uninitialized"),
+                tag => f.debug_struct("Value").field("tag", &tag).finish(),
+            }
+        }
+    }
+}
 
 impl Deref for Value {
     type Target = ffi::JSValue;
@@ -81,6 +98,14 @@ impl ContextRef {
 
     pub fn new_error(&self) -> Value {
         Value(unsafe { ffi::JS_NewError(self.as_ptr()) })
+    }
+
+    pub fn throw_out_of_memory(&self) -> Value {
+        Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
+    }
+
+    pub fn exception(&self) -> Value {
+        Value(unsafe { ffi::JS_GetException(self.as_ptr()) })
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
@@ -268,6 +293,10 @@ const fn mkval(tag: i32, val: i32) -> Value {
 }
 
 impl Value {
+    pub fn new<T: NewValue>(ctxt: &ContextRef, v: T) -> Self {
+        v.new_value(ctxt)
+    }
+
     pub const fn nan() -> Self {
         Value(ffi::JSValue {
             u: ffi::JSValueUnion {

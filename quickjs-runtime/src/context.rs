@@ -2,7 +2,7 @@ use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
-use crate::{ffi, RuntimeRef};
+use crate::{ffi, RuntimeRef, Value};
 
 foreign_type! {
     /// `Context` represents a Javascript context (or Realm).
@@ -53,5 +53,13 @@ impl ContextRef {
             ffi::JS_SetMaxStackSize(self.as_ptr(), stack_size);
         }
         self
+    }
+
+    pub fn global_object(&self) -> Value {
+        unsafe { ffi::JS_GetGlobalObject(self.as_ptr()) }.into()
+    }
+
+    pub fn reset_uncatchable_error(&self) {
+        unsafe { ffi::JS_ResetUncatchableError(self.as_ptr()) }
     }
 }
