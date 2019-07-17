@@ -34,28 +34,42 @@ impl From<ffi::JSValue> for Value {
 }
 
 impl RuntimeRef {
-    pub unsafe fn free_value(&self, v: Value) {
+    pub fn free_value(&self, v: Value) {
         if v.has_ref_cnt() {
-            let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
+            unsafe {
+                let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
 
-            ref_cnt.as_mut().ref_count -= 1;
+                ref_cnt.as_mut().ref_count -= 1;
 
-            if ref_cnt.as_ref().ref_count <= 0 {
-                ffi::__JS_FreeValueRT(self.as_ptr(), v.0)
+                if ref_cnt.as_ref().ref_count <= 0 {
+                    ffi::__JS_FreeValueRT(self.as_ptr(), v.0)
+                }
             }
         }
     }
 }
 
 impl ContextRef {
-    pub unsafe fn free_value(&self, v: Value) {
+    pub fn clone_value(&self, v: &Value) -> Value {
+        unsafe {
+            if v.has_ref_cnt() {
+                v.as_ptr::<ffi::JSRefCountHeader>().as_mut().ref_count += 1;
+            }
+        }
+
+        Value(v.0)
+    }
+
+    pub fn free_value(&self, v: Value) {
         if v.has_ref_cnt() {
-            let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
+            unsafe {
+                let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
 
-            ref_cnt.as_mut().ref_count -= 1;
+                ref_cnt.as_mut().ref_count -= 1;
 
-            if ref_cnt.as_ref().ref_count <= 0 {
-                ffi::__JS_FreeValue(self.as_ptr(), v.0)
+                if ref_cnt.as_ref().ref_count <= 0 {
+                    ffi::__JS_FreeValue(self.as_ptr(), v.0)
+                }
             }
         }
     }
@@ -154,18 +168,6 @@ impl<'a> NewValue for &'a str {
 impl NewValue for *const c_char {
     fn new_value(self, context: &ContextRef) -> Value {
         Value(unsafe { ffi::JS_NewString(context.as_ptr(), self) })
-    }
-}
-
-impl Clone for Value {
-    fn clone(&self) -> Self {
-        unsafe {
-            if self.has_ref_cnt() {
-                self.as_ptr::<ffi::JSRefCountHeader>().as_mut().ref_count += 1;
-            }
-        }
-
-        Value(self.0)
     }
 }
 
@@ -287,7 +289,7 @@ impl Value {
         }
     }
 
-    pub fn as_obj(&self) -> Option<NonNull<ffi::JSObject>> {
+    pub fn as_object(&self) -> Option<NonNull<ffi::JSObject>> {
         if self.tag() == JS_TAG_OBJECT {
             Some(unsafe { self.as_ptr() })
         } else {
