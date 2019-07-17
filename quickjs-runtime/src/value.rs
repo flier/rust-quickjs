@@ -10,6 +10,12 @@ use crate::{
 #[repr(transparent)]
 pub struct Value(ffi::JSValue);
 
+impl From<ffi::JSValue> for Value {
+    fn from(v: ffi::JSValue) -> Self {
+        Value(v)
+    }
+}
+
 impl RuntimeRef {
     pub unsafe fn free_value(&self, v: Value) {
         if v.has_ref_cnt() {

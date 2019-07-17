@@ -1,3 +1,4 @@
+#[doc(hidden)]
 #[macro_export]
 macro_rules! impl_foreign_type {
     ($type:ident, $reftype:ident) => {
