@@ -1,7 +1,8 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
 use std::ptr::NonNull;
+use std::slice;
 
 use foreign_types::ForeignTypeRef;
 
@@ -120,6 +121,90 @@ impl ContextRef {
     pub fn is_constructor(&self, val: &Value) -> bool {
         unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.0) != FALSE }
     }
+
+    pub fn to_bool(&self, val: &Value) -> Option<bool> {
+        match unsafe { ffi::JS_ToBool(self.as_ptr(), val.0) } {
+            ERR => None,
+            FALSE => Some(false),
+            _ => Some(true),
+        }
+    }
+
+    pub fn to_int32(&self, val: &Value) -> Option<i32> {
+        let mut n = 0;
+
+        match unsafe { ffi::JS_ToInt32(self.as_ptr(), &mut n, val.0) } {
+            ERR => None,
+            _ => Some(n),
+        }
+    }
+
+    pub fn to_int64(&self, val: &Value) -> Option<i64> {
+        let mut n = 0;
+
+        match unsafe { ffi::JS_ToInt64(self.as_ptr(), &mut n, val.0) } {
+            ERR => None,
+            _ => Some(n),
+        }
+    }
+
+    pub fn to_index(&self, val: &Value) -> Option<u64> {
+        let mut n = 0;
+
+        match unsafe { ffi::JS_ToIndex(self.as_ptr(), &mut n, val.0) } {
+            ERR => None,
+            _ => Some(n),
+        }
+    }
+
+    pub fn to_float64(&self, val: &Value) -> Option<f64> {
+        let mut n = 0.0;
+
+        match unsafe { ffi::JS_ToFloat64(self.as_ptr(), &mut n, val.0) } {
+            ERR => None,
+            _ => Some(n),
+        }
+    }
+
+    pub fn to_string(&self, val: &Value) -> Value {
+        Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
+    }
+
+    pub fn to_cstring(&self, val: &Value) -> Option<CStrBuf> {
+        let mut len = 0;
+
+        unsafe {
+            let p = ffi::JS_ToCStringLen(self.as_ptr(), &mut len, val.0, FALSE);
+
+            if p.is_null() {
+                None
+            } else {
+                Some(CStrBuf(
+                    self,
+                    CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
+                        p as *const _,
+                        len as usize + 1,
+                    )),
+                ))
+            }
+        }
+    }
+}
+
+pub struct CStrBuf<'a>(pub(crate) &'a ContextRef, pub(crate) &'a CStr);
+
+impl<'a> Drop for CStrBuf<'a> {
+    fn drop(&mut self) {
+        unsafe { ffi::JS_FreeCString(self.0.as_ptr(), self.1.as_ptr()) }
+    }
+}
+
+impl<'a> Deref for CStrBuf<'a> {
+    type Target = CStr;
+
+    fn deref(&self) -> &Self::Target {
+        self.1
+    }
 }
 
 pub trait NewValue {
@@ -171,6 +256,7 @@ impl NewValue for *const c_char {
     }
 }
 
+const ERR: i32 = -1;
 const TRUE: i32 = 1;
 const FALSE: i32 = 0;
 

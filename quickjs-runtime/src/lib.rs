@@ -16,4 +16,4 @@ pub use atom::{Atom, NewAtom};
 pub use context::{Context, ContextRef};
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use runtime::{Runtime, RuntimeRef};
-pub use value::{NewValue, Value};
+pub use value::{CStrBuf, NewValue, Value};
