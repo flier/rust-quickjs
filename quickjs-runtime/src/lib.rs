@@ -12,8 +12,8 @@ mod context;
 mod runtime;
 mod value;
 
-pub use atom::Atom;
+pub use atom::{Atom, NewAtom};
 pub use context::{Context, ContextRef};
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use runtime::{Runtime, RuntimeRef};
-pub use value::Value;
+pub use value::{NewValue, Value};

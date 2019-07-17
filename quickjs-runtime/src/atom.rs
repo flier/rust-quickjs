@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
@@ -12,12 +13,12 @@ impl RuntimeRef {
     }
 }
 
-pub trait IntoAtom {
-    fn into_atom(self, context: &ContextRef) -> Atom;
+pub trait NewAtom {
+    fn new_atom(self, context: &ContextRef) -> Atom;
 }
 
-impl<'a> IntoAtom for &'a str {
-    fn into_atom(self, context: &ContextRef) -> Atom {
+impl<'a> NewAtom for &'a str {
+    fn new_atom(self, context: &ContextRef) -> Atom {
         unsafe {
             ffi::JS_NewAtomLen(
                 context.as_ptr(),
@@ -28,21 +29,21 @@ impl<'a> IntoAtom for &'a str {
     }
 }
 
-impl IntoAtom for *const i8 {
-    fn into_atom(self, context: &ContextRef) -> Atom {
+impl NewAtom for *const c_char {
+    fn new_atom(self, context: &ContextRef) -> Atom {
         unsafe { ffi::JS_NewAtom(context.as_ptr(), self) }
     }
 }
 
-impl IntoAtom for u32 {
-    fn into_atom(self, context: &ContextRef) -> Atom {
+impl NewAtom for u32 {
+    fn new_atom(self, context: &ContextRef) -> Atom {
         unsafe { ffi::JS_NewAtomUInt32(context.as_ptr(), self) }
     }
 }
 
 impl ContextRef {
-    pub fn new_atom<T: IntoAtom>(&self, v: T) -> Atom {
-        v.into_atom(self)
+    pub fn new_atom<T: NewAtom>(&self, v: T) -> Atom {
+        v.new_atom(self)
     }
 
     pub fn free_atom(&self, atom: Atom) {

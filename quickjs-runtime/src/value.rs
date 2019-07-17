@@ -1,3 +1,6 @@
+use std::ffi::CString;
+use std::ops::{Deref, DerefMut};
+use std::os::raw::c_char;
 use std::ptr::NonNull;
 
 use foreign_types::ForeignTypeRef;
@@ -9,6 +12,20 @@ use crate::{
 
 #[repr(transparent)]
 pub struct Value(ffi::JSValue);
+
+impl Deref for Value {
+    type Target = ffi::JSValue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Value {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl From<ffi::JSValue> for Value {
     fn from(v: ffi::JSValue) -> Self {
@@ -43,27 +60,100 @@ impl ContextRef {
         }
     }
 
-    pub fn new_bool(&self, v: bool) -> Value {
-        mkval(JS_TAG_BOOL, if v { TRUE } else { FALSE })
+    pub fn new_value<T: NewValue>(&self, s: T) -> Value {
+        s.new_value(self)
     }
 
-    pub fn new_int32(&self, v: i32) -> Value {
-        mkval(JS_TAG_INT, v)
+    pub fn new_error(&self) -> Value {
+        Value(unsafe { ffi::JS_NewError(self.as_ptr()) })
     }
 
-    pub fn new_int64(&self, v: i64) -> Value {
-        Value(unsafe { ffi::JS_NewInt64(self.as_ptr(), v) })
-    }
-
-    pub fn new_float64(&self, v: f64) -> Value {
-        Value(ffi::JSValue {
-            u: ffi::JSValueUnion { float64: v },
-            tag: JS_TAG_FLOAT64 as i64,
+    pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
+        Value(unsafe {
+            ffi::JS_NewAtomString(
+                self.as_ptr(),
+                CString::new(s)
+                    .expect("atom string should not contain an internal 0 byte")
+                    .as_ptr(),
+            )
         })
+    }
+
+    pub fn new_object(&self) -> Value {
+        Value(unsafe { ffi::JS_NewObject(self.as_ptr()) })
+    }
+
+    pub fn new_array(&self) -> Value {
+        Value(unsafe { ffi::JS_NewArray(self.as_ptr()) })
+    }
+
+    pub fn is_array(&self, val: &Value) -> bool {
+        unsafe { ffi::JS_IsArray(self.as_ptr(), val.0) != FALSE }
     }
 
     pub fn new_catch_offset(&self, off: i32) -> Value {
         mkval(JS_TAG_CATCH_OFFSET, off)
+    }
+
+    pub fn is_error(&self, val: &Value) -> bool {
+        unsafe { ffi::JS_IsError(self.as_ptr(), val.0) != FALSE }
+    }
+
+    pub fn is_function(&self, val: &Value) -> bool {
+        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.0) != FALSE }
+    }
+
+    pub fn is_constructor(&self, val: &Value) -> bool {
+        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.0) != FALSE }
+    }
+}
+
+pub trait NewValue {
+    fn new_value(self, context: &ContextRef) -> Value;
+}
+
+impl NewValue for bool {
+    fn new_value(self, _context: &ContextRef) -> Value {
+        mkval(JS_TAG_BOOL, if self { TRUE } else { FALSE })
+    }
+}
+
+impl NewValue for i32 {
+    fn new_value(self, _context: &ContextRef) -> Value {
+        mkval(JS_TAG_INT, self)
+    }
+}
+
+impl NewValue for i64 {
+    fn new_value(self, context: &ContextRef) -> Value {
+        Value(unsafe { ffi::JS_NewInt64(context.as_ptr(), self) })
+    }
+}
+
+impl NewValue for f64 {
+    fn new_value(self, _context: &ContextRef) -> Value {
+        Value(ffi::JSValue {
+            u: ffi::JSValueUnion { float64: self },
+            tag: JS_TAG_FLOAT64 as i64,
+        })
+    }
+}
+
+impl<'a> NewValue for &'a str {
+    fn new_value(self, context: &ContextRef) -> Value {
+        Value(unsafe {
+            ffi::JS_NewStringLen(
+                context.as_ptr(),
+                self.as_ptr() as *const _,
+                self.len() as i32,
+            )
+        })
+    }
+}
+
+impl NewValue for *const c_char {
+    fn new_value(self, context: &ContextRef) -> Value {
+        Value(unsafe { ffi::JS_NewString(context.as_ptr(), self) })
     }
 }
 
@@ -107,11 +197,11 @@ impl Value {
         mkval(JS_TAG_UNDEFINED, 0)
     }
 
-    pub const fn false_() -> Self {
+    pub const fn false_value() -> Self {
         mkval(JS_TAG_BOOL, FALSE)
     }
 
-    pub const fn true_() -> Self {
+    pub const fn true_value() -> Self {
         mkval(JS_TAG_BOOL, TRUE)
     }
 
@@ -173,8 +263,12 @@ impl Value {
         self.tag() == JS_TAG_OBJECT
     }
 
-    pub fn as_int(&self) -> i32 {
-        unsafe { self.0.u.int32 }
+    pub fn as_int(&self) -> Option<i32> {
+        if self.tag() == JS_TAG_INT {
+            Some(unsafe { self.0.u.int32 })
+        } else {
+            None
+        }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -193,13 +287,18 @@ impl Value {
         }
     }
 
-    pub fn as_ptr<T>(&self) -> NonNull<T> {
-        unsafe { NonNull::new_unchecked(self.0.u.ptr).cast() }
+    pub fn as_obj(&self) -> Option<NonNull<ffi::JSObject>> {
+        if self.tag() == JS_TAG_OBJECT {
+            Some(unsafe { self.as_ptr() })
+        } else {
+            None
+        }
     }
 
-    pub fn as_obj(&self) -> NonNull<ffi::JSObject> {
-        self.as_ptr()
+    unsafe fn as_ptr<T>(&self) -> NonNull<T> {
+        NonNull::new_unchecked(self.0.u.ptr).cast()
     }
+
     fn has_ref_cnt(&self) -> bool {
         self.tag() >= JS_TAG_FIRST
     }
