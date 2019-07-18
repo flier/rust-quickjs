@@ -8,10 +8,10 @@ use std::slice;
 use foreign_types::ForeignTypeRef;
 
 pub use crate::ffi::_bindgen_ty_1::*;
-use crate::{ffi, ContextRef, RuntimeRef};
+use crate::{ffi, Atom, ContextRef, Local, RuntimeRef};
 
 #[repr(transparent)]
-pub struct Value(ffi::JSValue);
+pub struct Value(pub(crate) ffi::JSValue);
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -67,6 +67,56 @@ impl RuntimeRef {
     }
 }
 
+impl Local<'_, Value> {
+    pub fn free(self) {
+        self.ctxt.free_value(self.inner)
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.ctxt.is_error(&self.inner)
+    }
+
+    pub fn is_function(&self) -> bool {
+        self.ctxt.is_function(&self.inner)
+    }
+
+    pub fn is_constructor(&self) -> bool {
+        self.ctxt.is_constructor(&self.inner)
+    }
+
+    pub fn to_bool(&self) -> Option<bool> {
+        self.ctxt.to_bool(&self.inner)
+    }
+
+    pub fn to_int32(&self) -> Option<i32> {
+        self.ctxt.to_int32(&self.inner)
+    }
+
+    pub fn to_int64(&self) -> Option<i64> {
+        self.ctxt.to_int64(&self.inner)
+    }
+
+    pub fn to_index(&self) -> Option<u64> {
+        self.ctxt.to_index(&self.inner)
+    }
+
+    pub fn to_float64(&self) -> Option<f64> {
+        self.ctxt.to_float64(&self.inner)
+    }
+
+    pub fn to_string(&self) -> Value {
+        self.ctxt.to_string(&self.inner)
+    }
+
+    pub fn to_cstr(&self) -> Option<CStrBuf> {
+        self.ctxt.to_cstr(&self.inner)
+    }
+
+    pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
+        self.ctxt.get_property(&self.inner, prop)
+    }
+}
+
 impl ContextRef {
     pub fn clone_value(&self, v: &Value) -> Value {
         unsafe {
@@ -92,20 +142,20 @@ impl ContextRef {
         }
     }
 
-    pub fn new_value<T: NewValue>(&self, s: T) -> Value {
-        s.new_value(self)
+    pub fn new_value<T: NewValue>(&self, s: T) -> Local<Value> {
+        self.bind(s.new_value(self))
     }
 
-    pub fn new_error(&self) -> Value {
-        Value(unsafe { ffi::JS_NewError(self.as_ptr()) })
+    pub fn new_error(&self) -> Local<Value> {
+        self.bind(Value(unsafe { ffi::JS_NewError(self.as_ptr()) }))
     }
 
-    pub fn throw_out_of_memory(&self) -> Value {
-        Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
+    pub fn throw_out_of_memory(&self) -> Local<Value> {
+        self.bind(Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }))
     }
 
-    pub fn exception(&self) -> Value {
-        Value(unsafe { ffi::JS_GetException(self.as_ptr()) })
+    pub fn exception(&self) -> Local<Value> {
+        self.bind(Value(unsafe { ffi::JS_GetException(self.as_ptr()) }))
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
@@ -125,10 +175,6 @@ impl ContextRef {
 
     pub fn new_array(&self) -> Value {
         Value(unsafe { ffi::JS_NewArray(self.as_ptr()) })
-    }
-
-    pub fn is_array(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsArray(self.as_ptr(), val.0) != FALSE }
     }
 
     pub fn new_catch_offset(&self, off: i32) -> Value {
@@ -195,7 +241,7 @@ impl ContextRef {
         Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
     }
 
-    pub fn to_cstring(&self, val: &Value) -> Option<CStrBuf> {
+    pub fn to_cstr(&self, val: &Value) -> Option<CStrBuf> {
         let mut len = 0;
 
         unsafe {
@@ -204,23 +250,72 @@ impl ContextRef {
             if p.is_null() {
                 None
             } else {
-                Some(CStrBuf(
-                    self,
-                    CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
-                        p as *const _,
-                        len as usize + 1,
-                    )),
-                ))
+                Some(CStrBuf(self.bind(CStr::from_bytes_with_nul_unchecked(
+                    slice::from_raw_parts(p as *const _, len as usize + 1),
+                ))))
             }
+        }
+    }
+
+    pub fn get_property<T: GetProperty>(&self, val: &Value, prop: T) -> Option<Local<Value>> {
+        prop.get_property(self, val)
+    }
+}
+
+pub trait GetProperty {
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>>;
+}
+
+impl GetProperty for &str {
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
+        let res: Value = unsafe {
+            ffi::JS_GetPropertyStr(
+                ctxt.as_ptr(),
+                val.0,
+                CString::new(*self).expect("prop").as_ptr(),
+            )
+        }
+        .into();
+
+        if res.is_undefined() {
+            None
+        } else {
+            Some(ctxt.bind(res))
         }
     }
 }
 
-pub struct CStrBuf<'a>(pub(crate) &'a ContextRef, pub(crate) &'a CStr);
+impl GetProperty for u32 {
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
+        let res: Value = unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), val.0, *self) }.into();
 
-impl<'a> Drop for CStrBuf<'a> {
+        if res.is_undefined() {
+            None
+        } else {
+            Some(ctxt.bind(res))
+        }
+    }
+}
+
+impl GetProperty for Atom<'_> {
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
+        let res: Value =
+            unsafe { ffi::JS_GetPropertyInternal(ctxt.as_ptr(), val.0, self.inner, val.0, FALSE) }
+                .into();
+
+        if res.is_undefined() {
+            None
+        } else {
+            Some(ctxt.bind(res))
+        }
+    }
+}
+
+pub struct CStrBuf<'a>(pub(crate) Local<'a, &'a CStr>);
+
+impl Drop for CStrBuf<'_> {
     fn drop(&mut self) {
-        unsafe { ffi::JS_FreeCString(self.0.as_ptr(), self.1.as_ptr()) }
+        unsafe { ffi::JS_FreeCString(self.0.ctxt.as_ptr(), self.0.inner.as_ptr()) }
     }
 }
 
@@ -228,7 +323,7 @@ impl<'a> Deref for CStrBuf<'a> {
     type Target = CStr;
 
     fn deref(&self) -> &Self::Target {
-        self.1
+        self.0.inner
     }
 }
 
@@ -293,8 +388,8 @@ const fn mkval(tag: i32, val: i32) -> Value {
 }
 
 impl Value {
-    pub fn new<T: NewValue>(ctxt: &ContextRef, v: T) -> Self {
-        v.new_value(ctxt)
+    pub fn new<T: NewValue>(ctxt: &ContextRef, v: T) -> Local<Self> {
+        ctxt.bind(v.new_value(ctxt))
     }
 
     pub const fn nan() -> Self {
@@ -328,6 +423,14 @@ impl Value {
 
     pub const fn uninitialized() -> Self {
         mkval(JS_TAG_UNINITIALIZED, 0)
+    }
+
+    pub fn ok(self) -> Option<Value> {
+        if self.is_undefined() {
+            None
+        } else {
+            Some(self)
+        }
     }
 
     pub fn tag(&self) -> i32 {

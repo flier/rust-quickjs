@@ -15,6 +15,7 @@ mod atom;
 mod context;
 mod error;
 mod eval;
+mod handle;
 mod runtime;
 mod value;
 
@@ -23,5 +24,6 @@ pub use context::{Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
+pub use handle::Local;
 pub use runtime::{Runtime, RuntimeRef};
 pub use value::{CStrBuf, NewValue, Value};

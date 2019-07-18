@@ -1,9 +1,10 @@
+use std::convert::TryFrom;
 use std::ffi::CString;
 
-use failure::{err_msg, Error, ResultExt};
+use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Value};
+use crate::{ffi, ContextRef, ErrorKind, Local, Value};
 
 bitflags! {
     pub struct Eval: u32 {
@@ -37,7 +38,7 @@ impl ContextRef {
         input: T,
         filename: &str,
         flags: Eval,
-    ) -> Result<Value, Error> {
+    ) -> Result<Local<Value>, Error> {
         let input = CString::new(input).context("input")?;
 
         trace!("eval @ {}: {:?}", filename, input);
@@ -45,7 +46,7 @@ impl ContextRef {
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;
 
-        let res: Value = unsafe {
+        let res = Value(unsafe {
             ffi::JS_Eval(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
@@ -53,38 +54,41 @@ impl ContextRef {
                 filename.as_ptr() as *const _,
                 flags.bits as i32,
             )
-        }
-        .into();
+        });
 
         if res.is_exception() {
             self.reset_uncatchable_error();
 
-            let exc = self.exception();
-            let err = if let Some(msg) = self.to_cstring(&exc) {
-                let msg = msg.to_string_lossy();
+            let err = ErrorKind::try_from(self.exception())?;
 
-                trace!("-> {}", msg);
+            trace!("-> {:?}", err);
 
-                Err(err_msg(msg.to_string()))
-            } else {
-                trace!("-> {:?}", exc);
-
-                Err(format_err!("eval script failed, {:?}", exc))
-            };
-
-            self.free_value(exc);
-
-            err
+            Err(err.into())
         } else {
             trace!("-> {:?}", res);
 
-            Ok(res)
+            Ok(self.bind(res))
         }
     }
 
-    pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Value {
-        unsafe { ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32) }
-            .into()
+    pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Result<Local<Value>, Error> {
+        let res = Value(unsafe {
+            ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32)
+        });
+
+        if res.is_exception() {
+            self.reset_uncatchable_error();
+
+            let err = ErrorKind::try_from(self.exception())?;
+
+            trace!("-> {:?}", err);
+
+            Err(err.into())
+        } else {
+            trace!("-> {:?}", res);
+
+            Ok(self.bind(res))
+        }
     }
 }
 
