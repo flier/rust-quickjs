@@ -90,7 +90,7 @@ impl ContextRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ffi, value::JS_TAG_INT, Context, Runtime};
+    use crate::{value::JS_TAG_INT, Context, Runtime};
 
     use super::*;
 
@@ -104,10 +104,6 @@ mod tests {
         assert_eq!(ctxt.runtime(), &rt);
 
         let res = ctxt.eval("1+2", "<evalScript>", Eval::GLOBAL).unwrap();
-
-        if res.is_exception() {
-            unsafe { ffi::js_std_dump_error(ctxt.as_ptr()) };
-        }
 
         assert_eq!(res.tag(), JS_TAG_INT);
         assert!(res.is_number());
