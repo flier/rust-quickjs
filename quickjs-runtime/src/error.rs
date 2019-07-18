@@ -4,7 +4,11 @@ use std::ffi::CString;
 use failure::{err_msg, Error};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Local, NewValue, Value, FALSE, TRUE};
+use crate::{
+    ffi,
+    value::{ERR, FALSE, TRUE},
+    ContextRef, Local, NewValue, Value,
+};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ErrorKind {
@@ -176,12 +180,9 @@ impl ContextRef {
         }))
     }
 
-    pub fn to_result(&self, v: Value) -> Result<Local<Value>, Error> {
+    pub fn check_exception(&self, v: Value) -> Result<Local<Value>, Error> {
         if v.is_exception() {
-            self.reset_uncatchable_error();
-
-            let exc = self.exception().expect("exception");
-            let err = ErrorKind::try_from(exc)?;
+            let err = self.take_exception()?;
 
             trace!("-> {:?}", err);
 
@@ -191,6 +192,28 @@ impl ContextRef {
 
             Ok(self.bind(v))
         }
+    }
+
+    pub fn check_error(&self, ret: i32) -> Result<i32, Error> {
+        if ret == ERR {
+            let err = self.take_exception()?;
+
+            trace!("-> {:?}", err);
+
+            Err(err.into())
+        } else {
+            trace!("-> {:?}", ret);
+
+            Ok(ret)
+        }
+    }
+
+    fn take_exception(&self) -> Result<ErrorKind, Error> {
+        self.reset_uncatchable_error();
+
+        self.exception()
+            .ok_or_else(|| err_msg("expected exception"))
+            .and_then(ErrorKind::try_from)
     }
 }
 

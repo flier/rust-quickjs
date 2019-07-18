@@ -29,4 +29,4 @@ pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use handle::Local;
 pub use runtime::{Runtime, RuntimeRef};
-pub use value::{CStrBuf, NewValue, Value, FALSE, TRUE};
+pub use value::{CStrBuf, NewValue, Value};

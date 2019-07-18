@@ -74,7 +74,7 @@ impl RuntimeRef {
 
 impl<'a> Local<'a, Value> {
     pub fn ok(self) -> Result<Local<'a, Value>, Error> {
-        self.ctxt.to_result(self.inner)
+        self.ctxt.check_exception(self.inner)
     }
 
     pub fn free(self) {
