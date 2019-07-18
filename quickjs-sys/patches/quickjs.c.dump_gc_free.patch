@@ -1,0 +1,4 @@
+90c90
+< //#define DUMP_GC_FREE
+---
+> #define DUMP_GC_FREE

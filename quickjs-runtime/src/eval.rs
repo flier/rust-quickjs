@@ -63,6 +63,25 @@ impl ContextRef {
         }))
         .ok()
     }
+
+    pub fn parse_json<T: AsRef<str>>(
+        &self,
+        input: T,
+        filename: &str,
+    ) -> Result<Local<Value>, Error> {
+        let input = input.as_ref();
+        let filename = CString::new(filename).context("filename")?;
+
+        self.bind(Value(unsafe {
+            ffi::JS_ParseJSON(
+                self.as_ptr(),
+                input.as_ptr() as *const _,
+                input.len(),
+                filename.as_ptr(),
+            )
+        }))
+        .ok()
+    }
 }
 
 #[cfg(test)]
@@ -72,7 +91,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn context() {
+    fn eval() {
         let _ = pretty_env_logger::try_init();
 
         let rt = Runtime::new();
@@ -92,5 +111,31 @@ mod tests {
                 .to_string(),
             "ReferenceError: foobar is not defined"
         );
+    }
+
+    #[test]
+    fn parse_json() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let obj = ctxt
+            .parse_json(
+                r#"{ "name": "John", "age": 30, "city": "New York" }"#,
+                "<evalScript>",
+            )
+            .unwrap();
+
+        assert_eq!(obj.get_property("name").unwrap().to_str().unwrap(), "John");
+        // assert_eq!(obj.get_property("age").unwrap().to_int32().unwrap(), 30);
+        assert_eq!(
+            obj.get_property("city").unwrap().to_str().unwrap(),
+            "New York"
+        );
+
+        // let age = obj.get_property("age").unwrap().into_inner();
+
+        // ctxt.free_value(age);
     }
 }

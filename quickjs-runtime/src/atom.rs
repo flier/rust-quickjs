@@ -1,6 +1,5 @@
 use std::ffi::CStr;
 use std::fmt;
-use std::mem;
 use std::ops::Deref;
 use std::os::raw::c_char;
 
@@ -38,7 +37,7 @@ impl NewAtom for u32 {
 
 impl NewAtom for Atom<'_> {
     fn new_atom(self, _context: &ContextRef) -> ffi::JSAtom {
-        self.0.into_inner()
+        self.0.inner
     }
 }
 
@@ -55,14 +54,6 @@ impl<'a> Deref for Atom<'a> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl Into<ffi::JSAtom> for Atom<'_> {
-    fn into(self) -> ffi::JSAtom {
-        let atom = self.inner;
-        mem::forget(self);
-        atom
     }
 }
 

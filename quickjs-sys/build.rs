@@ -39,17 +39,71 @@ fn build_libquickjs() -> Result<(), Error> {
     }
 
     if cfg!(target_os = "macos") {
-        let quickjs_patch = CARGO_MANIFEST_DIR
-            .join("quickjs.macos.patch")
+        let patch = CARGO_MANIFEST_DIR
+            .join("patches/Makefile.macos.patch")
             .canonicalize()?;
 
-        println!("patch Makefile for macos with {:?}", quickjs_patch);
+        println!("patch `Makefile` for macos with {:?}", patch);
 
         Command::new("patch")
             .current_dir(&quickjs_dir)
             .arg("Makefile")
-            .arg(quickjs_patch)
+            .arg(patch)
             .output()?;
+    }
+
+    let apply_patch = |name: &str| -> Result<(), Error> {
+        let patch = CARGO_MANIFEST_DIR
+            .join(format!("patches/quickjs.c.{}.patch", name))
+            .canonicalize()?;
+
+        println!(
+            "patch `quickjs.c` to {} with {:?}",
+            name.replace("_", " "),
+            patch
+        );
+
+        Command::new("patch")
+            .current_dir(&quickjs_dir)
+            .arg("quickjs.c")
+            .arg(patch)
+            .output()?;
+
+        Ok(())
+    };
+
+    if cfg!(feature = "dump_dump_freeclosure") {
+        apply_patch("dump_free")?;
+    }
+    if cfg!(feature = "dump_closure") {
+        apply_patch("dump_closure")?;
+    }
+    if cfg!(feature = "dump_gc") {
+        apply_patch("dump_gc")?;
+    }
+    if cfg!(feature = "dump_gc_free") {
+        apply_patch("dump_gc_free")?;
+    }
+    if cfg!(feature = "dump_leaks") {
+        apply_patch("dump_leaks")?;
+    }
+    if cfg!(feature = "dump_objects") {
+        apply_patch("dump_objects")?;
+    }
+    if cfg!(feature = "dump_atoms") {
+        apply_patch("dump_atoms")?;
+    }
+    if cfg!(feature = "dump_shapes") {
+        apply_patch("dump_shapes")?;
+    }
+    if cfg!(feature = "dump_module_resolve") {
+        apply_patch("dump_module_resolve")?;
+    }
+    if cfg!(feature = "dump_promise") {
+        apply_patch("dump_promise")?;
+    }
+    if cfg!(feature = "dump_read_object") {
+        apply_patch("dump_read_object")?;
     }
 
     if !quickjs_dir.join("libquickjs.a").is_file() {

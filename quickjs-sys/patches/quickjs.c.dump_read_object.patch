@@ -1,0 +1,4 @@
+100c100
+< //#define DUMP_READ_OBJECT
+---
+> #define DUMP_READ_OBJECT

@@ -178,7 +178,11 @@ where
     T: NewAtom,
 {
     fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
-        ctxt.check_bool(unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.0, self.new_atom(ctxt)) })
+        let atom = self.new_atom(ctxt);
+        let ret = unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.0, atom) };
+
+        ctxt.free_atom(atom);
+        ctxt.check_bool(ret)
     }
 }
 
@@ -191,14 +195,13 @@ where
     T: NewAtom,
 {
     fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
-        ctxt.check_bool(unsafe {
-            ffi::JS_DeleteProperty(
-                ctxt.as_ptr(),
-                this.0,
-                self.new_atom(ctxt),
-                ffi::JS_PROP_THROW as i32,
-            )
-        })
+        let atom = self.new_atom(ctxt);
+        let ret = unsafe {
+            ffi::JS_DeleteProperty(ctxt.as_ptr(), this.0, atom, ffi::JS_PROP_THROW as i32)
+        };
+
+        ctxt.free_atom(atom);
+        ctxt.check_bool(ret)
     }
 }
 

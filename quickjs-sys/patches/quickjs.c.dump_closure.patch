@@ -1,0 +1,4 @@
+77c77
+< //#define DUMP_CLOSURE
+---
+> #define DUMP_CLOSURE

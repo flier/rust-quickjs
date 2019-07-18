@@ -1,0 +1,4 @@
+88c88
+< //#define DUMP_GC
+---
+> #define DUMP_GC

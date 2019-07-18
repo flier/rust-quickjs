@@ -1,0 +1,4 @@
+98c98
+< //#define DUMP_MODULE_RESOLVE
+---
+> #define DUMP_MODULE_RESOLVE
