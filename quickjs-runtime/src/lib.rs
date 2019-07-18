@@ -18,6 +18,7 @@ mod context;
 mod error;
 mod eval;
 mod handle;
+mod prop;
 mod runtime;
 mod value;
 
