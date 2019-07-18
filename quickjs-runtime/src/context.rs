@@ -58,8 +58,4 @@ impl ContextRef {
     pub fn global_object(&self) -> Value {
         unsafe { ffi::JS_GetGlobalObject(self.as_ptr()) }.into()
     }
-
-    pub fn reset_uncatchable_error(&self) {
-        unsafe { ffi::JS_ResetUncatchableError(self.as_ptr()) }
-    }
 }

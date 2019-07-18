@@ -6,6 +6,8 @@ extern crate failure;
 extern crate bitflags;
 #[macro_use]
 extern crate foreign_types;
+#[macro_use]
+extern crate cstr;
 
 use quickjs_sys as ffi;
 
@@ -26,4 +28,4 @@ pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use handle::Local;
 pub use runtime::{Runtime, RuntimeRef};
-pub use value::{CStrBuf, NewValue, Value};
+pub use value::{CStrBuf, NewValue, Value, FALSE, TRUE};

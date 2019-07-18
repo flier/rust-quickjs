@@ -11,6 +11,10 @@ use foreign_types::ForeignTypeRef;
 pub use crate::ffi::_bindgen_ty_1::*;
 use crate::{ffi, Atom, ContextRef, Local, RuntimeRef};
 
+pub const ERR: i32 = -1;
+pub const TRUE: i32 = 1;
+pub const FALSE: i32 = 0;
+
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
 
@@ -149,14 +153,6 @@ impl ContextRef {
 
     pub fn new_value<T: NewValue>(&self, s: T) -> Local<Value> {
         self.bind(s.new_value(self))
-    }
-
-    pub fn new_error(&self) -> Local<Value> {
-        self.bind(Value(unsafe { ffi::JS_NewError(self.as_ptr()) }))
-    }
-
-    pub fn throw_out_of_memory(&self) -> Local<Value> {
-        self.bind(Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }))
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
@@ -369,10 +365,6 @@ impl<T: Into<Value>> NewValue for T {
         self.into()
     }
 }
-
-const ERR: i32 = -1;
-const TRUE: i32 = 1;
-const FALSE: i32 = 0;
 
 const fn mkval(tag: i32, val: i32) -> Value {
     Value(ffi::JSValue {

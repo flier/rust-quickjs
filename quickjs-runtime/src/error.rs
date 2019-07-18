@@ -1,9 +1,10 @@
 use std::convert::TryFrom;
+use std::ffi::CString;
 
 use failure::{err_msg, Error};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Local, NewValue, Value};
+use crate::{ffi, ContextRef, Local, NewValue, Value, FALSE, TRUE};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ErrorKind {
@@ -51,6 +52,8 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
     fn try_from(
         value: Local<'_, Value>,
     ) -> Result<Self, <Self as TryFrom<Local<'_, Value>>>::Error> {
+        use ErrorKind::*;
+
         let err = if value.is_error() {
             let name = value
                 .get_property("name")
@@ -68,15 +71,15 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .to_string();
 
             match &*name.to_string_lossy() {
-                "EvalError" => ErrorKind::EvalError(msg),
-                "InternalError" => ErrorKind::InternalError(msg),
-                "RangeError" => ErrorKind::RangeError(msg),
-                "ReferenceError" => ErrorKind::ReferenceError(msg),
-                "SyntaxError" => ErrorKind::SyntaxError(msg),
-                "TypeError" => ErrorKind::TypeError(msg),
-                "URIError" => ErrorKind::URIError(msg),
-                "Error" => ErrorKind::Error(msg),
-                _ => ErrorKind::Custom(name.to_string_lossy().to_string(), msg),
+                "EvalError" => EvalError(msg),
+                "InternalError" => InternalError(msg),
+                "RangeError" => RangeError(msg),
+                "ReferenceError" => ReferenceError(msg),
+                "SyntaxError" => SyntaxError(msg),
+                "TypeError" => TypeError(msg),
+                "URIError" => URIError(msg),
+                "Error" => Error(msg),
+                _ => Custom(name.to_string_lossy().to_string(), msg),
             }
         } else {
             let msg = value
@@ -85,7 +88,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .to_string_lossy()
                 .to_string();
 
-            ErrorKind::Throw(msg)
+            Throw(msg)
         };
 
         value.free();
@@ -95,15 +98,81 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
 }
 
 impl ContextRef {
+    pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_Throw(self.as_ptr(), exc.new_value(self).into_inner())
+        }))
+    }
+
     pub fn exception(&self) -> Option<Local<Value>> {
         Value(unsafe { ffi::JS_GetException(self.as_ptr()) })
             .ok()
             .map(|v| self.bind(v))
     }
 
-    pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
+    pub fn enable_is_error_property(&self, enable: bool) {
+        unsafe { ffi::JS_EnableIsErrorProperty(self.as_ptr(), if enable { TRUE } else { FALSE }) }
+    }
+
+    pub fn reset_uncatchable_error(&self) {
+        unsafe { ffi::JS_ResetUncatchableError(self.as_ptr()) }
+    }
+
+    pub fn new_error(&self) -> Local<Value> {
+        self.bind(Value(unsafe { ffi::JS_NewError(self.as_ptr()) }))
+    }
+
+    pub fn throw_out_of_memory(&self) -> Local<Value> {
+        self.bind(Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }))
+    }
+
+    pub fn throw_syntax_error(&self, msg: &str) -> Local<Value> {
         self.bind(Value(unsafe {
-            ffi::JS_Throw(self.as_ptr(), exc.new_value(self).into_inner())
+            ffi::JS_ThrowSyntaxError(
+                self.as_ptr(),
+                cstr!("%s").as_ptr(),
+                CString::new(msg).expect("msg").as_ptr(),
+            )
+        }))
+    }
+
+    pub fn throw_type_error(&self, msg: &str) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_ThrowTypeError(
+                self.as_ptr(),
+                cstr!("%s").as_ptr(),
+                CString::new(msg).expect("msg").as_ptr(),
+            )
+        }))
+    }
+
+    pub fn throw_reference_error(&self, msg: &str) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_ThrowReferenceError(
+                self.as_ptr(),
+                cstr!("%s").as_ptr(),
+                CString::new(msg).expect("msg").as_ptr(),
+            )
+        }))
+    }
+
+    pub fn throw_range_error(&self, msg: &str) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_ThrowRangeError(
+                self.as_ptr(),
+                cstr!("%s").as_ptr(),
+                CString::new(msg).expect("msg").as_ptr(),
+            )
+        }))
+    }
+
+    pub fn throw_internal_error(&self, msg: &str) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_ThrowInternalError(
+                self.as_ptr(),
+                cstr!("%s").as_ptr(),
+                CString::new(msg).expect("msg").as_ptr(),
+            )
         }))
     }
 
@@ -129,7 +198,7 @@ impl ContextRef {
 mod tests {
     use crate::{Context, Eval, Runtime};
 
-    use super::*;
+    use super::ErrorKind::{self, *};
 
     #[test]
     fn std_error() {
@@ -138,14 +207,31 @@ mod tests {
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        let err = ctxt
-            .eval("foobar", "<evalScript>", Eval::GLOBAL)
-            .unwrap_err();
+        assert_eq!(
+            ctxt.eval("foobar", "<evalScript>", Eval::GLOBAL)
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &ReferenceError("foobar is not defined".into())
+        );
 
         assert_eq!(
-            err.downcast_ref::<ErrorKind>().unwrap(),
-            &ErrorKind::ReferenceError("foobar is not defined".into())
-        )
+            ctxt.throw_syntax_error("foobar is not defined")
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &SyntaxError("foobar is not defined".into())
+        );
+
+        assert_eq!(
+            ctxt.throw_out_of_memory()
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &InternalError("out of memory".into())
+        );
     }
 
     #[test]
@@ -155,13 +241,12 @@ mod tests {
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        let err = ctxt
-            .eval("throw new Error('Whoops!');", "<evalScript>", Eval::GLOBAL)
-            .unwrap_err();
-
         assert_eq!(
-            err.downcast_ref::<ErrorKind>().unwrap(),
-            &ErrorKind::Error("Whoops!".into())
+            ctxt.eval("throw new Error('Whoops!');", "<evalScript>", Eval::GLOBAL)
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &Error("Whoops!".into())
         )
     }
 
@@ -192,7 +277,7 @@ throw new CustomError('foobar');
 
         assert_eq!(
             err.downcast_ref::<ErrorKind>().unwrap(),
-            &ErrorKind::Custom("CustomError".into(), "foobar".into())
+            &Custom("CustomError".into(), "foobar".into())
         )
     }
 
@@ -203,22 +288,13 @@ throw new CustomError('foobar');
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        let err = ctxt
-            .eval("throw 'Whoops!';", "<evalScript>", Eval::GLOBAL)
-            .unwrap_err();
-
         assert_eq!(
-            err.downcast_ref::<ErrorKind>().unwrap(),
-            &ErrorKind::Throw("Whoops!".into())
-        )
-    }
-
-    #[test]
-    fn throw_error() {
-        let _ = pretty_env_logger::try_init();
-
-        let rt = Runtime::new();
-        let ctxt = Context::new(&rt);
+            ctxt.eval("throw 'Whoops!';", "<evalScript>", Eval::GLOBAL)
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &Throw("Whoops!".into())
+        );
 
         assert_eq!(
             ctxt.throw("Whoops!")
@@ -226,7 +302,7 @@ throw new CustomError('foobar');
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &ErrorKind::Throw("Whoops!".into())
+            &Throw("Whoops!".into())
         );
     }
 
@@ -238,12 +314,20 @@ throw new CustomError('foobar');
         let ctxt = Context::new(&rt);
 
         assert_eq!(
+            ctxt.eval("throw 123;", "<evalScript>", Eval::GLOBAL)
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &Throw("123".into())
+        );
+
+        assert_eq!(
             ctxt.throw(123)
                 .ok()
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &ErrorKind::Throw("123".into())
+            &Throw("123".into())
         );
     }
 }
