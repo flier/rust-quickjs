@@ -195,6 +195,8 @@ mod tests {
             .eval("new Object();", "<evalScript>", Eval::GLOBAL)
             .unwrap();
 
-        ctxt.free_value(obj.into_inner());
+        assert!(obj.get_property("foo").is_none());
+        assert!(obj.set_property("foo", "bar").unwrap());
+        assert_eq!(obj.get_property("foo").unwrap().to_str().unwrap(), "bar");
     }
 }

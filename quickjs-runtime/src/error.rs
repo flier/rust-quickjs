@@ -58,7 +58,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
     ) -> Result<Self, <Self as TryFrom<Local<'_, Value>>>::Error> {
         use ErrorKind::*;
 
-        let err = if value.is_error() {
+        Ok(if value.is_error() {
             let name = value
                 .get_property("name")
                 .ok_or_else(|| err_msg("missing `name` property"))?;
@@ -93,11 +93,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .to_string();
 
             Throw(msg)
-        };
-
-        value.free();
-
-        Ok(err)
+        })
     }
 }
 

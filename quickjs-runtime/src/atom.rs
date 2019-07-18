@@ -6,7 +6,7 @@ use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::CStrBuf, ContextRef, Local, RuntimeRef, Value};
+use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef, Value};
 
 pub trait NewAtom {
     fn new_atom(self, context: &ContextRef) -> ffi::JSAtom;
@@ -38,6 +38,12 @@ impl NewAtom for u32 {
 
 pub struct Atom<'a>(Local<'a, ffi::JSAtom>);
 
+impl Unbindable for ffi::JSAtom {
+    fn unbind(ctxt: &ContextRef, atom: ffi::JSAtom) {
+        ctxt.free_atom(atom)
+    }
+}
+
 impl<'a> Deref for Atom<'a> {
     type Target = Local<'a, ffi::JSAtom>;
 
@@ -51,12 +57,6 @@ impl Into<ffi::JSAtom> for Atom<'_> {
         let atom = self.inner;
         mem::forget(self);
         atom
-    }
-}
-
-impl Drop for Atom<'_> {
-    fn drop(&mut self) {
-        self.ctxt.free_atom(self.0.inner)
     }
 }
 
@@ -85,7 +85,7 @@ impl Atom<'_> {
         self.ctxt.atom_to_string(self.inner)
     }
 
-    pub fn to_cstr(&self) -> CStrBuf {
+    pub fn to_cstr(&self) -> Local<&CStr> {
         self.ctxt.atom_to_cstr(self.inner)
     }
 }
@@ -117,8 +117,8 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) }.into())
     }
 
-    pub fn atom_to_cstr(&self, atom: ffi::JSAtom) -> CStrBuf {
-        CStrBuf(self.bind(unsafe { CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom)) }))
+    pub fn atom_to_cstr(&self, atom: ffi::JSAtom) -> Local<&CStr> {
+        self.bind(unsafe { CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom)) })
     }
 }
 

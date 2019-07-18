@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -9,7 +10,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 
 pub use crate::ffi::_bindgen_ty_1::*;
-use crate::{ffi, ContextRef, Local, RuntimeRef};
+use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef};
 
 pub const ERR: i32 = -1;
 pub const TRUE: i32 = 1;
@@ -17,6 +18,12 @@ pub const FALSE: i32 = 0;
 
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
+
+impl Unbindable for Value {
+    fn unbind(ctxt: &ContextRef, inner: Self) {
+        ctxt.free_value(inner)
+    }
+}
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -56,6 +63,12 @@ impl From<ffi::JSValue> for Value {
     }
 }
 
+impl Into<ffi::JSValue> for Value {
+    fn into(self) -> ffi::JSValue {
+        self.0
+    }
+}
+
 impl RuntimeRef {
     pub fn free_value(&self, v: Value) {
         if v.has_ref_cnt() {
@@ -73,12 +86,16 @@ impl RuntimeRef {
 }
 
 impl<'a> Local<'a, Value> {
-    pub fn ok(self) -> Result<Local<'a, Value>, Error> {
-        self.ctxt.check_exception(self.inner)
+    pub fn ok(mut self) -> Result<Local<'a, Value>, Error> {
+        let v = self.take();
+
+        self.ctxt.check_exception(v)
     }
 
-    pub fn free(self) {
-        self.ctxt.free_value(self.inner)
+    pub fn free(mut self) {
+        let v = self.take();
+
+        self.ctxt.free_value(v)
     }
 
     pub fn is_error(&self) -> bool {
@@ -117,8 +134,12 @@ impl<'a> Local<'a, Value> {
         self.ctxt.to_string(&self.inner)
     }
 
-    pub fn to_cstr(&self) -> Option<CStrBuf> {
+    pub fn to_cstr(&self) -> Option<Local<&CStr>> {
         self.ctxt.to_cstr(&self.inner)
+    }
+
+    pub fn to_str(&self) -> Option<Cow<str>> {
+        self.to_cstr().map(|s| s.to_string_lossy())
     }
 }
 
@@ -234,7 +255,7 @@ impl ContextRef {
         Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
     }
 
-    pub fn to_cstr(&self, val: &Value) -> Option<CStrBuf> {
+    pub fn to_cstr(&self, val: &Value) -> Option<Local<&CStr>> {
         let mut len = 0;
 
         unsafe {
@@ -243,27 +264,20 @@ impl ContextRef {
             if p.is_null() {
                 None
             } else {
-                Some(CStrBuf(self.bind(CStr::from_bytes_with_nul_unchecked(
-                    slice::from_raw_parts(p as *const _, len as usize + 1),
-                ))))
+                Some(
+                    self.bind(CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
+                        p as *const _,
+                        len as usize + 1,
+                    ))),
+                )
             }
         }
     }
 }
 
-pub struct CStrBuf<'a>(pub(crate) Local<'a, &'a CStr>);
-
-impl Drop for CStrBuf<'_> {
-    fn drop(&mut self) {
-        unsafe { ffi::JS_FreeCString(self.0.ctxt.as_ptr(), self.0.inner.as_ptr()) }
-    }
-}
-
-impl<'a> Deref for CStrBuf<'a> {
-    type Target = CStr;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.inner
+impl Unbindable for &CStr {
+    fn unbind(ctxt: &ContextRef, s: &CStr) {
+        unsafe { ffi::JS_FreeCString(ctxt.as_ptr(), s.as_ptr()) }
     }
 }
 
