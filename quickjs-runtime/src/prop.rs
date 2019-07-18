@@ -175,6 +175,10 @@ impl<'a> Local<'a, Value> {
     pub fn is_extensible(&self) -> Result<bool, Error> {
         self.ctxt.is_extensible(&self.inner)
     }
+
+    pub fn prevent_extensions(&self) -> Result<bool, Error> {
+        self.ctxt.prevent_extensions(&self.inner)
+    }
 }
 
 impl ContextRef {
@@ -198,14 +202,18 @@ impl ContextRef {
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
         self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.0) })
     }
+
+    pub fn prevent_extensions(&self, obj: &Value) -> Result<bool, Error> {
+        self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.0) })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Eval, Runtime};
+    use crate::{Context, ErrorKind, Eval, Runtime};
 
     #[test]
-    fn props() {
+    fn set_property() {
         let _ = pretty_env_logger::try_init();
 
         let rt = Runtime::new();
@@ -220,6 +228,29 @@ mod tests {
         assert!(obj.set_property("foo", "bar").unwrap());
         assert!(obj.has_property("foo"));
         assert_eq!(obj.get_property("foo").unwrap().to_str().unwrap(), "bar");
+    }
+
+    #[test]
+    fn extensible() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let obj = ctxt
+            .eval("new Object();", "<evalScript>", Eval::GLOBAL)
+            .unwrap();
+
         assert!(obj.is_extensible().unwrap());
+        assert!(obj.prevent_extensions().unwrap());
+        assert!(!obj.is_extensible().unwrap());
+
+        assert_eq!(
+            obj.set_property("foo", "bar")
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &ErrorKind::TypeError("object is not extensible".into())
+        );
     }
 }
