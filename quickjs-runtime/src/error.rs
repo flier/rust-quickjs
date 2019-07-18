@@ -6,8 +6,14 @@ use crate::{Local, Value};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ErrorKind {
+    #[fail(display = "Throw: {}", _0)]
+    Throw(String),
+
     #[fail(display = "Error: {}", _0)]
     Error(String),
+
+    #[fail(display = "{}: {}", _0, _1)]
+    Custom(String, String),
 
     /// an error that occurs regarding the global function eval().
     #[fail(display = "EvalError: {}", _0)]
@@ -68,10 +74,17 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 "SyntaxError" => ErrorKind::SyntaxError(msg),
                 "TypeError" => ErrorKind::TypeError(msg),
                 "URIError" => ErrorKind::URIError(msg),
-                _ => ErrorKind::Error(msg),
+                "Error" => ErrorKind::Error(msg),
+                _ => ErrorKind::Custom(name.to_string_lossy().to_string(), msg),
             })
         } else {
-            Err(err_msg("value is not an exception"))
+            let msg = value
+                .to_cstr()
+                .ok_or_else(|| err_msg("invalid value"))?
+                .to_string_lossy()
+                .to_string();
+
+            Ok(ErrorKind::Throw(msg))
         };
 
         value.free();
@@ -87,21 +100,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn error() {
+    fn std_error() {
         let _ = pretty_env_logger::try_init();
 
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        let res = ctxt.eval("foobar", "<evalScript>", Eval::GLOBAL);
+        let err = ctxt
+            .eval("foobar", "<evalScript>", Eval::GLOBAL)
+            .unwrap_err();
 
-        if let Some(err) = res.unwrap_err().downcast_ref::<ErrorKind>() {
-            assert_eq!(
-                err,
-                &ErrorKind::ReferenceError("foobar is not defined".into())
-            )
-        } else {
-            panic!("unexpected exception")
-        }
+        assert_eq!(
+            err.downcast_ref::<ErrorKind>().unwrap(),
+            &ErrorKind::ReferenceError("foobar is not defined".into())
+        )
     }
+
+    #[test]
+    fn generic_error() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let err = ctxt
+            .eval("throw new Error('Whoops!');", "<evalScript>", Eval::GLOBAL)
+            .unwrap_err();
+
+        assert_eq!(
+            err.downcast_ref::<ErrorKind>().unwrap(),
+            &ErrorKind::Error("Whoops!".into())
+        )
+    }
+
+    #[test]
+    fn custom_error() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let err = ctxt
+            .eval(
+                r#"
+class CustomError extends Error {
+    constructor(...params) {
+        super(...params);
+
+        this.name = 'CustomError';
+    }
+}
+
+throw new CustomError('foobar');
+"#,
+                "<evalScript>",
+                Eval::GLOBAL,
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            err.downcast_ref::<ErrorKind>().unwrap(),
+            &ErrorKind::Custom("CustomError".into(), "foobar".into())
+        )
+    }
+
+    #[test]
+    fn throw_error() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let err = ctxt
+            .eval("throw 'Whoops!';", "<evalScript>", Eval::GLOBAL)
+            .unwrap_err();
+
+        assert_eq!(
+            err.downcast_ref::<ErrorKind>().unwrap(),
+            &ErrorKind::Throw("Whoops!".into())
+        )
+    }
+
 }

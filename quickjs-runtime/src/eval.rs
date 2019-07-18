@@ -1,10 +1,9 @@
-use std::convert::TryFrom;
 use std::ffi::CString;
 
 use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, ErrorKind, Local, Value};
+use crate::{ffi, ContextRef, Local, Value};
 
 bitflags! {
     pub struct Eval: u32 {
@@ -46,7 +45,7 @@ impl ContextRef {
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;
 
-        let res = Value(unsafe {
+        self.bind(Value(unsafe {
             ffi::JS_Eval(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
@@ -54,41 +53,15 @@ impl ContextRef {
                 filename.as_ptr() as *const _,
                 flags.bits as i32,
             )
-        });
-
-        if res.is_exception() {
-            self.reset_uncatchable_error();
-
-            let err = ErrorKind::try_from(self.exception())?;
-
-            trace!("-> {:?}", err);
-
-            Err(err.into())
-        } else {
-            trace!("-> {:?}", res);
-
-            Ok(self.bind(res))
-        }
+        }))
+        .ok()
     }
 
     pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Result<Local<Value>, Error> {
-        let res = Value(unsafe {
+        self.bind(Value(unsafe {
             ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32)
-        });
-
-        if res.is_exception() {
-            self.reset_uncatchable_error();
-
-            let err = ErrorKind::try_from(self.exception())?;
-
-            trace!("-> {:?}", err);
-
-            Err(err.into())
-        } else {
-            trace!("-> {:?}", res);
-
-            Ok(self.bind(res))
-        }
+        }))
+        .ok()
     }
 }
 

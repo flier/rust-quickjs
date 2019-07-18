@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -5,10 +6,11 @@ use std::os::raw::c_char;
 use std::ptr::NonNull;
 use std::slice;
 
+use failure::Error;
 use foreign_types::ForeignTypeRef;
 
 pub use crate::ffi::_bindgen_ty_1::*;
-use crate::{ffi, Atom, ContextRef, Local, RuntimeRef};
+use crate::{ffi, Atom, ContextRef, ErrorKind, Local, RuntimeRef};
 
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
@@ -67,7 +69,11 @@ impl RuntimeRef {
     }
 }
 
-impl Local<'_, Value> {
+impl<'a> Local<'a, Value> {
+    pub fn ok(self) -> Result<Local<'a, Value>, Error> {
+        self.ctxt.to_result(self.inner)
+    }
+
     pub fn free(self) {
         self.ctxt.free_value(self.inner)
     }
@@ -139,6 +145,23 @@ impl ContextRef {
                     ffi::__JS_FreeValue(self.as_ptr(), v.0)
                 }
             }
+        }
+    }
+
+    pub fn to_result(&self, v: Value) -> Result<Local<Value>, Error> {
+        if v.is_exception() {
+            self.reset_uncatchable_error();
+
+            let exc = self.exception();
+            let err = ErrorKind::try_from(exc)?;
+
+            trace!("-> {:?}", err);
+
+            Err(err.into())
+        } else {
+            trace!("-> {:?}", v);
+
+            Ok(self.bind(v))
         }
     }
 
@@ -268,46 +291,33 @@ pub trait GetProperty {
 
 impl GetProperty for &str {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
-        let res: Value = unsafe {
+        Value(unsafe {
             ffi::JS_GetPropertyStr(
                 ctxt.as_ptr(),
                 val.0,
                 CString::new(*self).expect("prop").as_ptr(),
             )
-        }
-        .into();
-
-        if res.is_undefined() {
-            None
-        } else {
-            Some(ctxt.bind(res))
-        }
+        })
+        .ok()
+        .map(|v| ctxt.bind(v))
     }
 }
 
 impl GetProperty for u32 {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
-        let res: Value = unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), val.0, *self) }.into();
-
-        if res.is_undefined() {
-            None
-        } else {
-            Some(ctxt.bind(res))
-        }
+        Value(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), val.0, *self) })
+            .ok()
+            .map(|v| ctxt.bind(v))
     }
 }
 
 impl GetProperty for Atom<'_> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, val: &Value) -> Option<Local<'a, Value>> {
-        let res: Value =
-            unsafe { ffi::JS_GetPropertyInternal(ctxt.as_ptr(), val.0, self.inner, val.0, FALSE) }
-                .into();
-
-        if res.is_undefined() {
-            None
-        } else {
-            Some(ctxt.bind(res))
-        }
+        Value(unsafe {
+            ffi::JS_GetPropertyInternal(ctxt.as_ptr(), val.0, self.inner, val.0, FALSE)
+        })
+        .ok()
+        .map(|v| ctxt.bind(v))
     }
 }
 
