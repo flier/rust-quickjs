@@ -1,8 +1,9 @@
 use std::convert::TryFrom;
 
 use failure::{err_msg, Error};
+use foreign_types::ForeignTypeRef;
 
-use crate::{Local, Value};
+use crate::{ffi, ContextRef, Local, NewValue, Value};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ErrorKind {
@@ -50,7 +51,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
     fn try_from(
         value: Local<'_, Value>,
     ) -> Result<Self, <Self as TryFrom<Local<'_, Value>>>::Error> {
-        let res = if value.is_error() {
+        let err = if value.is_error() {
             let name = value
                 .get_property("name")
                 .ok_or_else(|| err_msg("missing `name` property"))?;
@@ -66,7 +67,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .to_string_lossy()
                 .to_string();
 
-            Ok(match &*name.to_string_lossy() {
+            match &*name.to_string_lossy() {
                 "EvalError" => ErrorKind::EvalError(msg),
                 "InternalError" => ErrorKind::InternalError(msg),
                 "RangeError" => ErrorKind::RangeError(msg),
@@ -76,7 +77,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 "URIError" => ErrorKind::URIError(msg),
                 "Error" => ErrorKind::Error(msg),
                 _ => ErrorKind::Custom(name.to_string_lossy().to_string(), msg),
-            })
+            }
         } else {
             let msg = value
                 .to_cstr()
@@ -84,12 +85,43 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .to_string_lossy()
                 .to_string();
 
-            Ok(ErrorKind::Throw(msg))
+            ErrorKind::Throw(msg)
         };
 
         value.free();
 
-        res
+        Ok(err)
+    }
+}
+
+impl ContextRef {
+    pub fn exception(&self) -> Option<Local<Value>> {
+        Value(unsafe { ffi::JS_GetException(self.as_ptr()) })
+            .ok()
+            .map(|v| self.bind(v))
+    }
+
+    pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
+        self.bind(Value(unsafe {
+            ffi::JS_Throw(self.as_ptr(), exc.new_value(self).into_inner())
+        }))
+    }
+
+    pub fn to_result(&self, v: Value) -> Result<Local<Value>, Error> {
+        if v.is_exception() {
+            self.reset_uncatchable_error();
+
+            let exc = self.exception().expect("exception");
+            let err = ErrorKind::try_from(exc)?;
+
+            trace!("-> {:?}", err);
+
+            Err(err.into())
+        } else {
+            trace!("-> {:?}", v);
+
+            Ok(self.bind(v))
+        }
     }
 }
 
@@ -165,7 +197,7 @@ throw new CustomError('foobar');
     }
 
     #[test]
-    fn throw_error() {
+    fn throw_string() {
         let _ = pretty_env_logger::try_init();
 
         let rt = Runtime::new();
@@ -181,4 +213,37 @@ throw new CustomError('foobar');
         )
     }
 
+    #[test]
+    fn throw_error() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        assert_eq!(
+            ctxt.throw("Whoops!")
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &ErrorKind::Throw("Whoops!".into())
+        );
+    }
+
+    #[test]
+    fn throw_int() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        assert_eq!(
+            ctxt.throw(123)
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &ErrorKind::Throw("123".into())
+        );
+    }
 }

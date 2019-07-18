@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -10,7 +9,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 
 pub use crate::ffi::_bindgen_ty_1::*;
-use crate::{ffi, Atom, ContextRef, ErrorKind, Local, RuntimeRef};
+use crate::{ffi, Atom, ContextRef, Local, RuntimeRef};
 
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
@@ -148,23 +147,6 @@ impl ContextRef {
         }
     }
 
-    pub fn to_result(&self, v: Value) -> Result<Local<Value>, Error> {
-        if v.is_exception() {
-            self.reset_uncatchable_error();
-
-            let exc = self.exception();
-            let err = ErrorKind::try_from(exc)?;
-
-            trace!("-> {:?}", err);
-
-            Err(err.into())
-        } else {
-            trace!("-> {:?}", v);
-
-            Ok(self.bind(v))
-        }
-    }
-
     pub fn new_value<T: NewValue>(&self, s: T) -> Local<Value> {
         self.bind(s.new_value(self))
     }
@@ -175,10 +157,6 @@ impl ContextRef {
 
     pub fn throw_out_of_memory(&self) -> Local<Value> {
         self.bind(Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }))
-    }
-
-    pub fn exception(&self) -> Local<Value> {
-        self.bind(Value(unsafe { ffi::JS_GetException(self.as_ptr()) }))
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
@@ -386,6 +364,12 @@ impl NewValue for *const c_char {
     }
 }
 
+impl<T: Into<Value>> NewValue for T {
+    fn new_value(self, _context: &ContextRef) -> Value {
+        self.into()
+    }
+}
+
 const ERR: i32 = -1;
 const TRUE: i32 = 1;
 const FALSE: i32 = 0;
@@ -433,6 +417,10 @@ impl Value {
 
     pub const fn uninitialized() -> Self {
         mkval(JS_TAG_UNINITIALIZED, 0)
+    }
+
+    pub fn into_inner(self) -> ffi::JSValue {
+        self.0
     }
 
     pub fn ok(self) -> Option<Value> {
@@ -530,6 +518,6 @@ impl Value {
     }
 
     fn has_ref_cnt(&self) -> bool {
-        self.tag() >= JS_TAG_FIRST
+        (self.tag() as u32) >= (JS_TAG_FIRST as u32)
     }
 }
