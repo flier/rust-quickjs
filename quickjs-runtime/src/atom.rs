@@ -36,6 +36,12 @@ impl NewAtom for u32 {
     }
 }
 
+impl NewAtom for Atom<'_> {
+    fn new_atom(self, _context: &ContextRef) -> ffi::JSAtom {
+        self.0.into_inner()
+    }
+}
+
 pub struct Atom<'a>(Local<'a, ffi::JSAtom>);
 
 impl Unbindable for ffi::JSAtom {

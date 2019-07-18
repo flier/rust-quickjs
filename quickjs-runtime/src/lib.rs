@@ -28,5 +28,6 @@ pub use error::ErrorKind;
 pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use handle::Local;
+pub use prop::{GetProperty, HasProperty, SetProperty};
 pub use runtime::{Runtime, RuntimeRef};
 pub use value::{NewValue, Value};

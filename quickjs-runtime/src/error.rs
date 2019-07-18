@@ -204,6 +204,14 @@ impl ContextRef {
         }
     }
 
+    pub fn check_bool(&self, ret: i32) -> Result<bool, Error> {
+        self.check_error(ret).and_then(|ret| match ret {
+            TRUE => Ok(true),
+            FALSE => Ok(false),
+            _ => Err(format_err!("unexpected result: {}", ret)),
+        })
+    }
+
     fn take_exception(&self) -> Result<ErrorKind, Error> {
         self.reset_uncatchable_error();
 
