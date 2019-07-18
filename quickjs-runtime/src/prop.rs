@@ -10,6 +10,35 @@ use crate::{
     Atom, ContextRef, Local, NewValue, Value,
 };
 
+bitflags! {
+    pub struct Prop: u32 {
+        const CONFIGURABLE = ffi::JS_PROP_CONFIGURABLE;
+        const WRITABLE = ffi::JS_PROP_WRITABLE;
+        const ENUMERABLE = ffi::JS_PROP_ENUMERABLE;
+        const C_W_E = ffi::JS_PROP_C_W_E;
+        const PROP_LENGTH = ffi::JS_PROP_LENGTH;
+        const TMASK = ffi::JS_PROP_TMASK;
+        const NORMAL = ffi::JS_PROP_NORMAL;
+        const GETSET = ffi::JS_PROP_GETSET;
+        const VARREF = ffi::JS_PROP_VARREF;
+        const AUTOINIT = ffi::JS_PROP_AUTOINIT;
+
+        const HAS_SHIFT = ffi::JS_PROP_HAS_SHIFT;
+        const HAS_CONFIGURABLE = ffi::JS_PROP_HAS_CONFIGURABLE;
+        const HAS_WRITABLE = ffi::JS_PROP_HAS_WRITABLE;
+        const HAS_ENUMERABLE = ffi::JS_PROP_HAS_ENUMERABLE;
+        const HAS_GET = ffi::JS_PROP_HAS_GET;
+        const HAS_SET = ffi::JS_PROP_HAS_SET;
+        const HAS_VALUE = ffi::JS_PROP_HAS_VALUE;
+
+        const THROW = ffi::JS_PROP_THROW;
+        const THROW_STRICT = ffi::JS_PROP_THROW_STRICT;
+
+        const NO_ADD = ffi::JS_PROP_NO_ADD;
+        const NO_EXOTIC = ffi::JS_PROP_NO_EXOTIC;
+    }
+}
+
 pub trait GetProperty {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>>;
 }
@@ -141,17 +170,35 @@ impl SetProperty for Atom<'_> {
 }
 
 pub trait HasProperty {
-    fn has_property(self, ctxt: &ContextRef, this: &Value) -> bool;
+    fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error>;
 }
 
 impl<'a, T> HasProperty for T
 where
     T: NewAtom,
 {
-    fn has_property(self, ctxt: &ContextRef, this: &Value) -> bool {
-        let atom = self.new_atom(ctxt);
+    fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
+        ctxt.check_bool(unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.0, self.new_atom(ctxt)) })
+    }
+}
 
-        unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.0, atom) != FALSE }
+pub trait DeleteProperty {
+    fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error>;
+}
+
+impl<'a, T> DeleteProperty for T
+where
+    T: NewAtom,
+{
+    fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
+        ctxt.check_bool(unsafe {
+            ffi::JS_DeleteProperty(
+                ctxt.as_ptr(),
+                this.0,
+                self.new_atom(ctxt),
+                ffi::JS_PROP_THROW as i32,
+            )
+        })
     }
 }
 
@@ -168,8 +215,12 @@ impl<'a> Local<'a, Value> {
         self.ctxt.set_property(&self.inner, prop, val)
     }
 
-    pub fn has_property<T: HasProperty>(&self, prop: T) -> bool {
+    pub fn has_property<T: HasProperty>(&self, prop: T) -> Result<bool, Error> {
         self.ctxt.has_property(&self.inner, prop)
+    }
+
+    pub fn delete_property<T: DeleteProperty>(&self, prop: T) -> Result<bool, Error> {
+        self.ctxt.delete_property(&self.inner, prop)
     }
 
     pub fn is_extensible(&self) -> Result<bool, Error> {
@@ -195,8 +246,12 @@ impl ContextRef {
         prop.set_property(self, this, val)
     }
 
-    pub fn has_property<T: HasProperty>(&self, this: &Value, prop: T) -> bool {
+    pub fn has_property<T: HasProperty>(&self, this: &Value, prop: T) -> Result<bool, Error> {
         prop.has_property(self, this)
+    }
+
+    pub fn delete_property<T: DeleteProperty>(&self, this: &Value, prop: T) -> Result<bool, Error> {
+        prop.delete_property(self, this)
     }
 
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
@@ -223,11 +278,13 @@ mod tests {
             .eval("new Object();", "<evalScript>", Eval::GLOBAL)
             .unwrap();
 
-        assert!(!obj.has_property("foo"));
+        assert!(!obj.has_property("foo").unwrap());
         assert!(obj.get_property("foo").is_none());
         assert!(obj.set_property("foo", "bar").unwrap());
-        assert!(obj.has_property("foo"));
+        assert!(obj.has_property("foo").unwrap());
         assert_eq!(obj.get_property("foo").unwrap().to_str().unwrap(), "bar");
+        assert!(obj.delete_property("foo").unwrap());
+        assert!(!obj.has_property("foo").unwrap());
     }
 
     #[test]
