@@ -25,7 +25,7 @@ mod runtime;
 mod value;
 
 pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
-pub use atom::{Atom, NewAtom};
+pub use atom::NewAtom;
 pub use context::{Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::Eval;

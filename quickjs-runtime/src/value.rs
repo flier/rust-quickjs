@@ -89,6 +89,12 @@ impl RuntimeRef {
     }
 }
 
+impl fmt::Display for Local<'_, Value> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.to_cstr().unwrap().to_string_lossy())
+    }
+}
+
 impl<'a> Local<'a, Value> {
     pub fn check_undefined(self) -> Option<Local<'a, Value>> {
         if self.inner.is_undefined() {
@@ -275,6 +281,12 @@ impl<'a> Bindable<'a> for &'a CStr {
 impl Unbindable for &CStr {
     fn unbind(ctxt: &ContextRef, s: &CStr) {
         unsafe { ffi::JS_FreeCString(ctxt.as_ptr(), s.as_ptr()) }
+    }
+}
+
+impl fmt::Display for Local<'_, &CStr> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.to_string_lossy())
     }
 }
 

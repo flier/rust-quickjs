@@ -4,10 +4,9 @@ use failure::{format_err, Error};
 use foreign_types::ForeignTypeRef;
 
 use crate::{
-    atom::NewAtom,
     ffi,
     value::{FALSE, TRUE},
-    Atom, ContextRef, Local, NewValue, Value,
+    ContextRef, Local, NewAtom, NewValue, Value,
 };
 
 bitflags! {
@@ -63,7 +62,7 @@ impl GetProperty for u32 {
     }
 }
 
-impl GetProperty for Atom<'_> {
+impl GetProperty for Local<'_, ffi::JSAtom> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
         ctxt.bind(unsafe {
             ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.0, self.inner, this.0, FALSE)
@@ -135,7 +134,7 @@ impl SetProperty for &str {
     }
 }
 
-impl SetProperty for Atom<'_> {
+impl SetProperty for Local<'_, ffi::JSAtom> {
     fn set_property<T: NewValue>(
         &self,
         ctxt: &ContextRef,

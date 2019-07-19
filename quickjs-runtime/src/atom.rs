@@ -1,6 +1,5 @@
 use std::ffi::{CStr, CString};
 use std::fmt;
-use std::ops::Deref;
 use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
@@ -35,41 +34,25 @@ impl NewAtom for u32 {
     }
 }
 
-impl NewAtom for Atom<'_> {
-    fn new_atom(self, _context: &ContextRef) -> ffi::JSAtom {
-        self.0.inner
-    }
-}
-
-pub struct Atom<'a>(Local<'a, ffi::JSAtom>);
-
 impl Unbindable for ffi::JSAtom {
     fn unbind(ctxt: &ContextRef, atom: ffi::JSAtom) {
         ctxt.free_atom(atom)
     }
 }
 
-impl<'a> Deref for Atom<'a> {
-    type Target = Local<'a, ffi::JSAtom>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Clone for Atom<'_> {
+impl Clone for Local<'_, ffi::JSAtom> {
     fn clone(&self) -> Self {
         self.ctxt.clone_atom(self.inner)
     }
 }
 
-impl fmt::Display for Atom<'_> {
+impl fmt::Display for Local<'_, ffi::JSAtom> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.to_cstr().to_string_lossy())
     }
 }
 
-impl Atom<'_> {
+impl Local<'_, ffi::JSAtom> {
     pub fn free(&self) {
         self.ctxt.free_atom(self.inner)
     }
@@ -94,15 +77,15 @@ impl RuntimeRef {
 }
 
 impl ContextRef {
-    pub fn new_atom<T: NewAtom>(&self, v: T) -> Atom {
+    pub fn new_atom<T: NewAtom>(&self, v: T) -> Local<ffi::JSAtom> {
         self.bind_atom(v.new_atom(self))
     }
 
-    fn bind_atom(&self, atom: ffi::JSAtom) -> Atom {
-        Atom(Local {
+    fn bind_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
+        Local {
             ctxt: self,
             inner: atom,
-        })
+        }
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Local<Value> {
@@ -120,7 +103,7 @@ impl ContextRef {
         unsafe { ffi::JS_FreeAtom(self.as_ptr(), atom) }
     }
 
-    pub fn clone_atom(&self, atom: ffi::JSAtom) -> Atom {
+    pub fn clone_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
         self.bind_atom(unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) })
     }
 
