@@ -18,6 +18,7 @@ mod atom;
 mod context;
 mod error;
 mod eval;
+mod func;
 mod handle;
 mod prop;
 mod runtime;

@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
@@ -142,8 +142,8 @@ impl<'a> Local<'a, Value> {
         self.ctxt.to_float64(&self.inner)
     }
 
-    pub fn to_string(&self) -> Value {
-        self.ctxt.to_string(&self.inner)
+    pub fn to_string(&self) -> Local<Value> {
+        self.ctxt.bind(self.ctxt.to_string(&self.inner))
     }
 
     pub fn to_cstr(&self) -> Option<Local<&CStr>> {
@@ -180,19 +180,8 @@ impl ContextRef {
         }
     }
 
-    pub fn new_value<T: NewValue>(&self, s: T) -> Local<Value> {
-        self.bind(s.new_value(self))
-    }
-
-    pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
-        Value(unsafe {
-            ffi::JS_NewAtomString(
-                self.as_ptr(),
-                CString::new(s)
-                    .expect("atom string should not contain an internal 0 byte")
-                    .as_ptr(),
-            )
-        })
+    pub fn new_value<T: NewValue>(&self, s: T) -> Value {
+        Value(s.new_value(self))
     }
 
     pub fn new_object(&self) -> Value {
@@ -205,18 +194,6 @@ impl ContextRef {
 
     pub fn new_catch_offset(&self, off: i32) -> Value {
         Value(mkval(JS_TAG_CATCH_OFFSET, off))
-    }
-
-    pub fn is_error(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsError(self.as_ptr(), val.0) != FALSE }
-    }
-
-    pub fn is_function(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.0) != FALSE }
-    }
-
-    pub fn is_constructor(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.0) != FALSE }
     }
 
     pub fn to_bool(&self, val: &Value) -> Option<bool> {
@@ -314,6 +291,15 @@ where
 
 pub trait NewValue {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue;
+}
+
+impl<T> NewValue for &T
+where
+    T: NewValue + Clone,
+{
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        self.clone().new_value(ctxt)
+    }
 }
 
 impl NewValue for bool {

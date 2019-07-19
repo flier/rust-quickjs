@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ops::Deref;
 use std::os::raw::c_char;
@@ -108,6 +108,17 @@ impl RuntimeRef {
 impl ContextRef {
     pub fn new_atom<T: NewAtom>(&self, v: T) -> Atom {
         Atom(self.bind(v.new_atom(self)))
+    }
+
+    pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Local<Value> {
+        self.bind(unsafe {
+            ffi::JS_NewAtomString(
+                self.as_ptr(),
+                CString::new(s)
+                    .expect("atom string should not contain an internal 0 byte")
+                    .as_ptr(),
+            )
+        })
     }
 
     pub fn free_atom(&self, atom: ffi::JSAtom) {
