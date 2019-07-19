@@ -5,11 +5,7 @@ use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{
-    ffi,
-    handle::{Bindable, Unbindable},
-    ContextRef, Local, RuntimeRef, Value,
-};
+use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef, Value};
 
 pub trait NewAtom {
     fn new_atom(self, context: &ContextRef) -> ffi::JSAtom;
@@ -46,14 +42,6 @@ impl NewAtom for Atom<'_> {
 }
 
 pub struct Atom<'a>(Local<'a, ffi::JSAtom>);
-
-impl<'a> Bindable<'a> for ffi::JSAtom {
-    type Output = ffi::JSAtom;
-
-    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
-        self
-    }
-}
 
 impl Unbindable for ffi::JSAtom {
     fn unbind(ctxt: &ContextRef, atom: ffi::JSAtom) {
@@ -107,7 +95,14 @@ impl RuntimeRef {
 
 impl ContextRef {
     pub fn new_atom<T: NewAtom>(&self, v: T) -> Atom {
-        Atom(self.bind(v.new_atom(self)))
+        self.bind_atom(v.new_atom(self))
+    }
+
+    fn bind_atom(&self, atom: ffi::JSAtom) -> Atom {
+        Atom(Local {
+            ctxt: self,
+            inner: atom,
+        })
     }
 
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Local<Value> {
@@ -126,7 +121,7 @@ impl ContextRef {
     }
 
     pub fn clone_atom(&self, atom: ffi::JSAtom) -> Atom {
-        Atom(self.bind(unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) }))
+        self.bind_atom(unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) })
     }
 
     pub fn atom_to_value(&self, atom: ffi::JSAtom) -> Local<Value> {

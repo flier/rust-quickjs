@@ -308,6 +308,42 @@ impl NewValue for bool {
     }
 }
 
+impl NewValue for u8 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        i32::from(self).new_value(ctxt)
+    }
+}
+
+impl NewValue for u16 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        i32::from(self).new_value(ctxt)
+    }
+}
+
+impl NewValue for u32 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        i64::from(self).new_value(ctxt)
+    }
+}
+
+impl NewValue for u64 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        (self as i64).new_value(ctxt)
+    }
+}
+
+impl NewValue for i8 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        i32::from(self).new_value(ctxt)
+    }
+}
+
+impl NewValue for i16 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        i32::from(self).new_value(ctxt)
+    }
+}
+
 impl NewValue for i32 {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
         mkval(JS_TAG_INT, self)
@@ -317,6 +353,12 @@ impl NewValue for i32 {
 impl NewValue for i64 {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         unsafe { ffi::JS_NewInt64(ctxt.as_ptr(), self) }
+    }
+}
+
+impl NewValue for f32 {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        f64::from(self).new_value(ctxt)
     }
 }
 

@@ -270,12 +270,12 @@ function Product(name, price) {
 
         assert_eq!(fib.call(None, [10]).unwrap().as_int().unwrap(), 55);
 
-        let product = global.get_property("Product").unwrap();
+        let product_ctor = global.get_property("Product").unwrap();
 
-        assert!(product.is_function());
-        assert!(product.is_constructor());
+        assert!(product_ctor.is_function());
+        assert!(product_ctor.is_constructor());
 
-        let product = product.call_constructor(("foobar", 30)).unwrap();
+        let product = product_ctor.call_constructor(("foobar", 30)).unwrap();
 
         assert_eq!(
             product.get_property("name").unwrap().to_str().unwrap(),
