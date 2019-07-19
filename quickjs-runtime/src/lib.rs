@@ -13,6 +13,7 @@ use quickjs_sys as ffi;
 
 #[macro_use]
 mod macros;
+mod arraybuf;
 mod atom;
 mod context;
 mod error;

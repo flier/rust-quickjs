@@ -10,7 +10,11 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 
 pub use crate::ffi::_bindgen_ty_1::*;
-use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef};
+use crate::{
+    ffi,
+    handle::{Bindable, Unbindable},
+    ContextRef, Local, RuntimeRef,
+};
 
 pub const ERR: i32 = -1;
 pub const TRUE: i32 = 1;
@@ -18,6 +22,22 @@ pub const FALSE: i32 = 0;
 
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
+
+impl<'a> Bindable<'a> for ffi::JSValue {
+    type Output = Value;
+
+    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
+        Value(self)
+    }
+}
+
+impl<'a> Bindable<'a> for Value {
+    type Output = Value;
+
+    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
+        self
+    }
+}
 
 impl Unbindable for Value {
     fn unbind(ctxt: &ContextRef, inner: Self) {
@@ -86,6 +106,14 @@ impl RuntimeRef {
 }
 
 impl<'a> Local<'a, Value> {
+    pub fn check_undefined(self) -> Option<Local<'a, Value>> {
+        if self.inner.is_undefined() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+
     pub fn ok(mut self) -> Result<Local<'a, Value>, Error> {
         let v = self.take();
 
@@ -192,7 +220,7 @@ impl ContextRef {
     }
 
     pub fn new_catch_offset(&self, off: i32) -> Value {
-        mkval(JS_TAG_CATCH_OFFSET, off)
+        Value(mkval(JS_TAG_CATCH_OFFSET, off))
     }
 
     pub fn is_error(&self, val: &Value) -> bool {
@@ -275,72 +303,82 @@ impl ContextRef {
     }
 }
 
+impl<'a> Bindable<'a> for &'a CStr {
+    type Output = &'a CStr;
+
+    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
+        self
+    }
+}
+
 impl Unbindable for &CStr {
     fn unbind(ctxt: &ContextRef, s: &CStr) {
         unsafe { ffi::JS_FreeCString(ctxt.as_ptr(), s.as_ptr()) }
     }
 }
 
+impl<'a, T> Bindable<'a> for T where T: NewValue {
+    type Output = Value;
+
+    fn bind_to(self, ctxt: &ContextRef) -> Self::Output {
+        Value(self.new_value(ctxt))
+    }
+}
+
 pub trait NewValue {
-    fn new_value(self, context: &ContextRef) -> Value;
+    fn new_value(self, context: &ContextRef) -> ffi::JSValue;
 }
 
 impl NewValue for bool {
-    fn new_value(self, _context: &ContextRef) -> Value {
+    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
         mkval(JS_TAG_BOOL, if self { TRUE } else { FALSE })
     }
 }
 
 impl NewValue for i32 {
-    fn new_value(self, _context: &ContextRef) -> Value {
+    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
         mkval(JS_TAG_INT, self)
     }
 }
 
 impl NewValue for i64 {
-    fn new_value(self, context: &ContextRef) -> Value {
-        Value(unsafe { ffi::JS_NewInt64(context.as_ptr(), self) })
+    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
+        unsafe { ffi::JS_NewInt64(context.as_ptr(), self) }
     }
 }
 
 impl NewValue for f64 {
-    fn new_value(self, _context: &ContextRef) -> Value {
-        Value(ffi::JSValue {
+    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
+        ffi::JSValue {
             u: ffi::JSValueUnion { float64: self },
             tag: JS_TAG_FLOAT64 as i64,
-        })
+        }
     }
 }
 
 impl<'a> NewValue for &'a str {
-    fn new_value(self, context: &ContextRef) -> Value {
-        Value(unsafe {
+    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
+        unsafe {
             ffi::JS_NewStringLen(
                 context.as_ptr(),
                 self.as_ptr() as *const _,
                 self.len() as i32,
             )
-        })
+        }
     }
 }
 
 impl NewValue for *const c_char {
-    fn new_value(self, context: &ContextRef) -> Value {
-        Value(unsafe { ffi::JS_NewString(context.as_ptr(), self) })
+    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
+        unsafe { ffi::JS_NewString(context.as_ptr(), self) }
     }
 }
 
-impl<T: Into<Value>> NewValue for T {
-    fn new_value(self, _context: &ContextRef) -> Value {
-        self.into()
-    }
-}
-
-const fn mkval(tag: i32, val: i32) -> Value {
-    Value(ffi::JSValue {
+const fn mkval(tag: i32, val: i32) -> ffi::JSValue {
+    ffi::JSValue {
         u: ffi::JSValueUnion { int32: val },
         tag: tag as i64,
-    })
+    }
 }
 
 impl Value {
@@ -358,39 +396,31 @@ impl Value {
     }
 
     pub const fn null() -> Self {
-        mkval(JS_TAG_NULL, 0)
+        Value(mkval(JS_TAG_NULL, 0))
     }
 
     pub const fn undefined() -> Self {
-        mkval(JS_TAG_UNDEFINED, 0)
+        Value(mkval(JS_TAG_UNDEFINED, 0))
     }
 
     pub const fn false_value() -> Self {
-        mkval(JS_TAG_BOOL, FALSE)
+        Value(mkval(JS_TAG_BOOL, FALSE))
     }
 
     pub const fn true_value() -> Self {
-        mkval(JS_TAG_BOOL, TRUE)
+        Value(mkval(JS_TAG_BOOL, TRUE))
     }
 
     pub const fn exception() -> Self {
-        mkval(JS_TAG_EXCEPTION, 0)
+        Value(mkval(JS_TAG_EXCEPTION, 0))
     }
 
     pub const fn uninitialized() -> Self {
-        mkval(JS_TAG_UNINITIALIZED, 0)
+        Value(mkval(JS_TAG_UNINITIALIZED, 0))
     }
 
     pub fn into_inner(self) -> ffi::JSValue {
         self.0
-    }
-
-    pub fn ok(self) -> Option<Value> {
-        if self.is_undefined() {
-            None
-        } else {
-            Some(self)
-        }
     }
 
     pub fn tag(&self) -> i32 {

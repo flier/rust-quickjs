@@ -99,15 +99,12 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
 
 impl ContextRef {
     pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
-        self.bind(Value(unsafe {
-            ffi::JS_Throw(self.as_ptr(), exc.new_value(self).into_inner())
-        }))
+        self.bind(unsafe { ffi::JS_Throw(self.as_ptr(), exc.new_value(self)) })
     }
 
     pub fn exception(&self) -> Option<Local<Value>> {
-        Value(unsafe { ffi::JS_GetException(self.as_ptr()) })
-            .ok()
-            .map(|v| self.bind(v))
+        self.bind(unsafe { ffi::JS_GetException(self.as_ptr()) })
+            .check_undefined()
     }
 
     pub fn enable_is_error_property(&self, enable: bool) {
@@ -119,61 +116,61 @@ impl ContextRef {
     }
 
     pub fn new_error(&self) -> Local<Value> {
-        self.bind(Value(unsafe { ffi::JS_NewError(self.as_ptr()) }))
+        self.bind(unsafe { ffi::JS_NewError(self.as_ptr()) })
     }
 
     pub fn throw_out_of_memory(&self) -> Local<Value> {
-        self.bind(Value(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }))
+        self.bind(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
     }
 
     pub fn throw_syntax_error(&self, msg: &str) -> Local<Value> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ThrowSyntaxError(
                 self.as_ptr(),
                 cstr!("%s").as_ptr(),
                 CString::new(msg).expect("msg").as_ptr(),
             )
-        }))
+        })
     }
 
     pub fn throw_type_error(&self, msg: &str) -> Local<Value> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ThrowTypeError(
                 self.as_ptr(),
                 cstr!("%s").as_ptr(),
                 CString::new(msg).expect("msg").as_ptr(),
             )
-        }))
+        })
     }
 
     pub fn throw_reference_error(&self, msg: &str) -> Local<Value> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ThrowReferenceError(
                 self.as_ptr(),
                 cstr!("%s").as_ptr(),
                 CString::new(msg).expect("msg").as_ptr(),
             )
-        }))
+        })
     }
 
     pub fn throw_range_error(&self, msg: &str) -> Local<Value> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ThrowRangeError(
                 self.as_ptr(),
                 cstr!("%s").as_ptr(),
                 CString::new(msg).expect("msg").as_ptr(),
             )
-        }))
+        })
     }
 
     pub fn throw_internal_error(&self, msg: &str) -> Local<Value> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ThrowInternalError(
                 self.as_ptr(),
                 cstr!("%s").as_ptr(),
                 CString::new(msg).expect("msg").as_ptr(),
             )
-        }))
+        })
     }
 
     pub fn check_exception(&self, v: Value) -> Result<Local<Value>, Error> {

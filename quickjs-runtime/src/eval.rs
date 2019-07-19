@@ -45,7 +45,7 @@ impl ContextRef {
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;
 
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_Eval(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
@@ -53,14 +53,14 @@ impl ContextRef {
                 filename.as_ptr() as *const _,
                 flags.bits as i32,
             )
-        }))
+        })
         .ok()
     }
 
     pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Result<Local<Value>, Error> {
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32)
-        }))
+        })
         .ok()
     }
 
@@ -72,14 +72,14 @@ impl ContextRef {
         let input = input.as_ref();
         let filename = CString::new(filename).context("filename")?;
 
-        self.bind(Value(unsafe {
+        self.bind(unsafe {
             ffi::JS_ParseJSON(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
                 input.len(),
                 filename.as_ptr(),
             )
-        }))
+        })
         .ok()
     }
 }

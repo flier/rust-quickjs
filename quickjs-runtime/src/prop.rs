@@ -45,33 +45,30 @@ pub trait GetProperty {
 
 impl GetProperty for &str {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        Value(unsafe {
+        ctxt.bind(unsafe {
             ffi::JS_GetPropertyStr(
                 ctxt.as_ptr(),
                 this.0,
                 CString::new(*self).expect("prop").as_ptr(),
             )
         })
-        .ok()
-        .map(|v| ctxt.bind(v))
+        .check_undefined()
     }
 }
 
 impl GetProperty for u32 {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        Value(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.0, *self) })
-            .ok()
-            .map(|v| ctxt.bind(v))
+        ctxt.bind(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.0, *self) })
+            .check_undefined()
     }
 }
 
 impl GetProperty for Atom<'_> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        Value(unsafe {
+        ctxt.bind(unsafe {
             ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.0, self.inner, this.0, FALSE)
         })
-        .ok()
-        .map(|v| ctxt.bind(v))
+        .check_undefined()
     }
 }
 
@@ -91,14 +88,8 @@ impl SetProperty for u32 {
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
-        let ret = unsafe {
-            ffi::JS_SetPropertyUint32(
-                ctxt.as_ptr(),
-                this.0,
-                *self,
-                val.new_value(ctxt).into_inner(),
-            )
-        };
+        let ret =
+            unsafe { ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.0, *self, val.new_value(ctxt)) };
 
         ctxt.check_error(ret).and_then(|ret| match ret {
             TRUE => Ok(true),
@@ -115,14 +106,8 @@ impl SetProperty for i64 {
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
-        let ret = unsafe {
-            ffi::JS_SetPropertyInt64(
-                ctxt.as_ptr(),
-                this.0,
-                *self,
-                val.new_value(ctxt).into_inner(),
-            )
-        };
+        let ret =
+            unsafe { ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.0, *self, val.new_value(ctxt)) };
 
         ctxt.check_error(ret).and_then(|ret| match ret {
             TRUE => Ok(true),
@@ -144,7 +129,7 @@ impl SetProperty for &str {
                 ctxt.as_ptr(),
                 this.0,
                 CString::new(*self)?.as_ptr(),
-                val.new_value(ctxt).into_inner(),
+                val.new_value(ctxt),
             )
         })
     }
@@ -162,7 +147,7 @@ impl SetProperty for Atom<'_> {
                 ctxt.as_ptr(),
                 this.0,
                 self.inner,
-                val.new_value(ctxt).into_inner(),
+                val.new_value(ctxt),
                 ffi::JS_PROP_THROW as i32,
             )
         })

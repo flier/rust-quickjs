@@ -5,7 +5,11 @@ use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef, Value};
+use crate::{
+    ffi,
+    handle::{Bindable, Unbindable},
+    ContextRef, Local, RuntimeRef, Value,
+};
 
 pub trait NewAtom {
     fn new_atom(self, context: &ContextRef) -> ffi::JSAtom;
@@ -42,6 +46,14 @@ impl NewAtom for Atom<'_> {
 }
 
 pub struct Atom<'a>(Local<'a, ffi::JSAtom>);
+
+impl<'a> Bindable<'a> for ffi::JSAtom {
+    type Output = ffi::JSAtom;
+
+    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
+        self
+    }
+}
 
 impl Unbindable for ffi::JSAtom {
     fn unbind(ctxt: &ContextRef, atom: ffi::JSAtom) {
@@ -107,11 +119,11 @@ impl ContextRef {
     }
 
     pub fn atom_to_value(&self, atom: ffi::JSAtom) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_AtomToValue(self.as_ptr(), atom) }.into())
+        self.bind(unsafe { ffi::JS_AtomToValue(self.as_ptr(), atom) })
     }
 
     pub fn atom_to_string(&self, atom: ffi::JSAtom) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) }.into())
+        self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) })
     }
 
     pub fn atom_to_cstr(&self, atom: ffi::JSAtom) -> Local<&CStr> {

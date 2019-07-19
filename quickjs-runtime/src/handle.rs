@@ -3,6 +3,16 @@ use std::ops::{Deref, DerefMut};
 
 use crate::ContextRef;
 
+pub trait Bindable<'a> {
+    type Output: Unbindable;
+
+    fn bind_to(self, ctxt: &ContextRef) -> Self::Output;
+}
+
+pub trait Unbindable {
+    fn unbind(ctxt: &ContextRef, inner: Self);
+}
+
 #[derive(Debug)]
 pub struct Local<'a, T>
 where
@@ -10,10 +20,6 @@ where
 {
     pub(crate) ctxt: &'a ContextRef,
     pub(crate) inner: T,
-}
-
-pub trait Unbindable {
-    fn unbind(ctxt: &ContextRef, inner: Self);
 }
 
 impl<'a, T> Drop for Local<'a, T>
@@ -73,13 +79,10 @@ where
 }
 
 impl ContextRef {
-    pub fn bind<T>(&self, val: T) -> Local<T>
-    where
-        T: Unbindable,
-    {
+    pub fn bind<'a, T: Bindable<'a>>(&'a self, val: T) -> Local<'a, T::Output> {
         Local {
             ctxt: self,
-            inner: val,
+            inner: val.bind_to(self),
         }
     }
 }
