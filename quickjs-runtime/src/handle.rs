@@ -57,14 +57,6 @@ impl<'a, T> Local<'a, T>
 where
     T: Unbindable,
 {
-    pub fn context(&self) -> &ContextRef {
-        self.ctxt
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.inner
-    }
-
     pub fn into_inner(mut self) -> T {
         let inner = self.take();
 
@@ -75,6 +67,19 @@ where
 
     pub(crate) fn take(&mut self) -> T {
         mem::replace(&mut self.inner, unsafe { mem::zeroed() })
+    }
+
+    pub fn map<U, F>(mut self, f: F) -> Local<'a, U>
+    where
+        F: FnOnce(T) -> U,
+        U: Unbindable,
+    {
+        let inner = f(self.take());
+
+        Local {
+            ctxt: self.ctxt,
+            inner,
+        }
     }
 }
 

@@ -23,22 +23,6 @@ pub const FALSE: i32 = 0;
 #[repr(transparent)]
 pub struct Value(pub(crate) ffi::JSValue);
 
-impl<'a> Bindable<'a> for ffi::JSValue {
-    type Output = Value;
-
-    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
-        Value(self)
-    }
-}
-
-impl<'a> Bindable<'a> for Value {
-    type Output = Value;
-
-    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
-        self
-    }
-}
-
 impl Unbindable for Value {
     fn unbind(ctxt: &ContextRef, inner: Self) {
         ctxt.free_value(inner)
@@ -317,7 +301,10 @@ impl Unbindable for &CStr {
     }
 }
 
-impl<'a, T> Bindable<'a> for T where T: NewValue {
+impl<'a, T> Bindable<'a> for T
+where
+    T: NewValue,
+{
     type Output = Value;
 
     fn bind_to(self, ctxt: &ContextRef) -> Self::Output {
@@ -326,29 +313,29 @@ impl<'a, T> Bindable<'a> for T where T: NewValue {
 }
 
 pub trait NewValue {
-    fn new_value(self, context: &ContextRef) -> ffi::JSValue;
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue;
 }
 
 impl NewValue for bool {
-    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
         mkval(JS_TAG_BOOL, if self { TRUE } else { FALSE })
     }
 }
 
 impl NewValue for i32 {
-    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
         mkval(JS_TAG_INT, self)
     }
 }
 
 impl NewValue for i64 {
-    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
-        unsafe { ffi::JS_NewInt64(context.as_ptr(), self) }
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        unsafe { ffi::JS_NewInt64(ctxt.as_ptr(), self) }
     }
 }
 
 impl NewValue for f64 {
-    fn new_value(self, _context: &ContextRef) -> ffi::JSValue {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
         ffi::JSValue {
             u: ffi::JSValueUnion { float64: self },
             tag: JS_TAG_FLOAT64 as i64,
@@ -357,20 +344,32 @@ impl NewValue for f64 {
 }
 
 impl<'a> NewValue for &'a str {
-    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
-        unsafe {
-            ffi::JS_NewStringLen(
-                context.as_ptr(),
-                self.as_ptr() as *const _,
-                self.len() as i32,
-            )
-        }
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        unsafe { ffi::JS_NewStringLen(ctxt.as_ptr(), self.as_ptr() as *const _, self.len() as i32) }
     }
 }
 
 impl NewValue for *const c_char {
-    fn new_value(self, context: &ContextRef) -> ffi::JSValue {
-        unsafe { ffi::JS_NewString(context.as_ptr(), self) }
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        unsafe { ffi::JS_NewString(ctxt.as_ptr(), self) }
+    }
+}
+
+impl NewValue for ffi::JSValue {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
+        self
+    }
+}
+
+impl NewValue for Value {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
+        self.0
+    }
+}
+
+impl<'a> NewValue for Local<'a, Value> {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
+        self.inner.0
     }
 }
 
@@ -417,6 +416,10 @@ impl Value {
 
     pub const fn uninitialized() -> Self {
         Value(mkval(JS_TAG_UNINITIALIZED, 0))
+    }
+
+    pub fn inner(&self) -> ffi::JSValue {
+        self.0
     }
 
     pub fn into_inner(self) -> ffi::JSValue {

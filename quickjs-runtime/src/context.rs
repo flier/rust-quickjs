@@ -2,7 +2,7 @@ use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
-use crate::{ffi, RuntimeRef, Value};
+use crate::{ffi, Local, RuntimeRef, Value};
 
 foreign_type! {
     /// `Context` represents a Javascript context (or Realm).
@@ -55,7 +55,7 @@ impl ContextRef {
         self
     }
 
-    pub fn global_object(&self) -> Value {
-        unsafe { ffi::JS_GetGlobalObject(self.as_ptr()) }.into()
+    pub fn global_object(&self) -> Local<Value> {
+        self.bind(unsafe { ffi::JS_GetGlobalObject(self.as_ptr()) })
     }
 }
