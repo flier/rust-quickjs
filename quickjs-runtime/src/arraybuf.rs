@@ -20,7 +20,7 @@ pub struct SharedArrayBuffer<'a>(Local<'a, Value>);
 
 impl<'a> NewValue for ArrayBuffer<'a> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.0.into_inner().0
+        self.0.into_inner().inner()
     }
 }
 
@@ -36,7 +36,7 @@ impl<'a> AsRef<[u8]> for ArrayBuffer<'a> {
     fn as_ref(&self) -> &[u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner.0);
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
 
             slice::from_raw_parts(data, size)
         }
@@ -47,7 +47,7 @@ impl<'a> AsMut<[u8]> for ArrayBuffer<'a> {
     fn as_mut(&mut self) -> &mut [u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner.0);
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
 
             slice::from_raw_parts_mut(data, size)
         }
@@ -64,13 +64,13 @@ impl<'a> ArrayBuffer<'a> {
     }
 
     pub fn detach(&self) {
-        unsafe { ffi::JS_DetachArrayBuffer(self.ctxt.as_ptr(), self.inner.0) }
+        unsafe { ffi::JS_DetachArrayBuffer(self.ctxt.as_ptr(), self.inner()) }
     }
 }
 
 impl<'a> NewValue for SharedArrayBuffer<'a> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.0.inner.0
+        self.inner()
     }
 }
 
@@ -86,7 +86,7 @@ impl<'a> AsRef<[u8]> for SharedArrayBuffer<'a> {
     fn as_ref(&self) -> &[u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner.0);
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
             slice::from_raw_parts(data, size)
         }
     }
@@ -96,7 +96,7 @@ impl<'a> AsMut<[u8]> for SharedArrayBuffer<'a> {
     fn as_mut(&mut self) -> &mut [u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner.0);
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
             slice::from_raw_parts_mut(data, size)
         }
     }

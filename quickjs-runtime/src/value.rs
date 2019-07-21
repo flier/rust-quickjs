@@ -21,7 +21,7 @@ pub const TRUE: i32 = 1;
 pub const FALSE: i32 = 0;
 
 #[repr(transparent)]
-pub struct Value(pub(crate) ffi::JSValue);
+pub struct Value(ffi::JSValue);
 
 impl Unbindable for Value {
     fn unbind(ctxt: &ContextRef, inner: Self) {
@@ -33,10 +33,10 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
             match self.tag() {
-                JS_TAG_INT => f.debug_tuple("Value").field(&self.0.u.int32).finish(),
+                JS_TAG_INT => f.debug_tuple("Value").field(&self.u.int32).finish(),
                 JS_TAG_BOOL => f
                     .debug_tuple("Value")
-                    .field(&(self.0.u.int32 != FALSE))
+                    .field(&(self.u.int32 != FALSE))
                     .finish(),
                 JS_TAG_NULL => f.write_str("Null"),
                 JS_TAG_UNDEFINED => f.write_str("Undefined"),
@@ -172,7 +172,9 @@ impl ContextRef {
         Value(v.0)
     }
 
-    pub fn free_value(&self, v: Value) {
+    pub fn free_value<T: Into<Value>>(&self, v: T) {
+        let v = v.into();
+
         if v.has_ref_cnt() {
             unsafe {
                 let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
@@ -403,13 +405,13 @@ impl NewValue for ffi::JSValue {
 
 impl NewValue for Value {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.0
+        self.inner()
     }
 }
 
 impl<'a> NewValue for Local<'a, Value> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.inner.0
+        self.into_inner().inner()
     }
 }
 
@@ -467,11 +469,11 @@ impl Value {
     }
 
     pub fn tag(&self) -> i32 {
-        self.0.tag as i32
+        self.tag as i32
     }
 
     pub fn is_number(&self) -> bool {
-        unsafe { ffi::JS_IsNumber(self.0) != FALSE }
+        unsafe { ffi::JS_IsNumber(self.inner()) != FALSE }
     }
 
     pub fn is_integer(&self) -> bool {
@@ -518,7 +520,7 @@ impl Value {
 
     pub fn as_int(&self) -> Option<i32> {
         if self.tag() == JS_TAG_INT {
-            Some(unsafe { self.0.u.int32 })
+            Some(unsafe { self.u.int32 })
         } else {
             None
         }
@@ -526,7 +528,7 @@ impl Value {
 
     pub fn as_bool(&self) -> Option<bool> {
         if self.tag() == JS_TAG_BOOL {
-            Some(unsafe { self.0.u.int32 != 0 })
+            Some(unsafe { self.u.int32 != 0 })
         } else {
             None
         }
@@ -534,7 +536,7 @@ impl Value {
 
     pub fn as_float(&self) -> Option<f64> {
         if self.tag() == JS_TAG_FLOAT64 {
-            Some(unsafe { self.0.u.float64 })
+            Some(unsafe { self.u.float64 })
         } else {
             None
         }
@@ -549,7 +551,7 @@ impl Value {
     }
 
     unsafe fn as_ptr<T>(&self) -> NonNull<T> {
-        NonNull::new_unchecked(self.0.u.ptr).cast()
+        NonNull::new_unchecked(self.u.ptr).cast()
     }
 
     fn has_ref_cnt(&self) -> bool {

@@ -123,11 +123,11 @@ impl Local<'_, Value> {
 
 impl ContextRef {
     pub fn is_function(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.0) != FALSE }
+        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.inner()) != FALSE }
     }
 
     pub fn is_constructor(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.0) != FALSE }
+        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.inner()) != FALSE }
     }
 
     pub fn call<T: Args>(
@@ -142,8 +142,8 @@ impl ContextRef {
             unsafe {
                 ffi::JS_Call(
                     self.as_ptr(),
-                    func.0,
-                    this.map_or_else(|| Value::undefined().0, |v| v.0),
+                    func.inner(),
+                    this.map_or_else(|| Value::undefined().inner(), |v| v.inner()),
                     args.len() as i32,
                     args.as_ptr() as *mut _,
                 )
@@ -151,7 +151,7 @@ impl ContextRef {
         };
 
         for arg in args {
-            self.free_value(Value(*arg));
+            self.free_value(*arg);
         }
 
         self.bind(ret).ok()
@@ -170,7 +170,7 @@ impl ContextRef {
         let res = self.bind(unsafe {
             ffi::JS_Invoke(
                 self.as_ptr(),
-                this.0,
+                this.inner(),
                 atom,
                 args.len() as i32,
                 args.as_ptr() as *mut _,
@@ -178,7 +178,7 @@ impl ContextRef {
         });
         self.free_atom(atom);
         for arg in args {
-            self.free_value(Value(*arg));
+            self.free_value(*arg);
         }
 
         res.ok()
@@ -190,14 +190,14 @@ impl ContextRef {
         let ret = unsafe {
             ffi::JS_CallConstructor(
                 self.as_ptr(),
-                func.0,
+                func.inner(),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )
         };
 
         for arg in args {
-            self.free_value(Value(*arg));
+            self.free_value(*arg);
         }
 
         self.bind(ret).ok()
@@ -214,15 +214,15 @@ impl ContextRef {
         let ret = unsafe {
             ffi::JS_CallConstructor2(
                 self.as_ptr(),
-                func.0,
-                new_target.map_or_else(|| Value::undefined().0, |v| v.0),
+                func.inner(),
+                new_target.map_or_else(|| Value::undefined().inner(), |v| v.inner()),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )
         };
 
         for arg in args {
-            self.free_value(Value(*arg));
+            self.free_value(*arg);
         }
 
         self.bind(ret).ok()

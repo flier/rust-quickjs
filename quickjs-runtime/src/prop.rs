@@ -47,7 +47,7 @@ impl GetProperty for &str {
         ctxt.bind(unsafe {
             ffi::JS_GetPropertyStr(
                 ctxt.as_ptr(),
-                this.0,
+                this.inner(),
                 CString::new(*self).expect("prop").as_ptr(),
             )
         })
@@ -57,7 +57,7 @@ impl GetProperty for &str {
 
 impl GetProperty for u32 {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        ctxt.bind(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.0, *self) })
+        ctxt.bind(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.inner(), *self) })
             .check_undefined()
     }
 }
@@ -65,7 +65,13 @@ impl GetProperty for u32 {
 impl GetProperty for Local<'_, ffi::JSAtom> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
         ctxt.bind(unsafe {
-            ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.0, self.inner, this.0, FALSE)
+            ffi::JS_GetPropertyInternal(
+                ctxt.as_ptr(),
+                this.inner(),
+                self.inner,
+                this.inner(),
+                FALSE,
+            )
         })
         .check_undefined()
     }
@@ -87,8 +93,9 @@ impl SetProperty for u32 {
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
-        let ret =
-            unsafe { ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.0, *self, val.new_value(ctxt)) };
+        let ret = unsafe {
+            ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.inner(), *self, val.new_value(ctxt))
+        };
 
         ctxt.check_error(ret).and_then(|ret| match ret {
             TRUE => Ok(true),
@@ -105,8 +112,9 @@ impl SetProperty for i64 {
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
-        let ret =
-            unsafe { ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.0, *self, val.new_value(ctxt)) };
+        let ret = unsafe {
+            ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.inner(), *self, val.new_value(ctxt))
+        };
 
         ctxt.check_error(ret).and_then(|ret| match ret {
             TRUE => Ok(true),
@@ -126,7 +134,7 @@ impl SetProperty for &str {
         ctxt.check_bool(unsafe {
             ffi::JS_SetPropertyStr(
                 ctxt.as_ptr(),
-                this.0,
+                this.inner(),
                 CString::new(*self)?.as_ptr(),
                 val.new_value(ctxt),
             )
@@ -144,7 +152,7 @@ impl SetProperty for Local<'_, ffi::JSAtom> {
         ctxt.check_bool(unsafe {
             ffi::JS_SetPropertyInternal(
                 ctxt.as_ptr(),
-                this.0,
+                this.inner(),
                 self.inner,
                 val.new_value(ctxt),
                 ffi::JS_PROP_THROW as i32,
@@ -163,7 +171,7 @@ where
 {
     fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
         let atom = self.new_atom(ctxt);
-        let ret = unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.0, atom) };
+        let ret = unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.inner(), atom) };
 
         ctxt.free_atom(atom);
         ctxt.check_bool(ret)
@@ -181,7 +189,7 @@ where
     fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
         let atom = self.new_atom(ctxt);
         let ret = unsafe {
-            ffi::JS_DeleteProperty(ctxt.as_ptr(), this.0, atom, ffi::JS_PROP_THROW as i32)
+            ffi::JS_DeleteProperty(ctxt.as_ptr(), this.inner(), atom, ffi::JS_PROP_THROW as i32)
         };
 
         ctxt.free_atom(atom);
@@ -242,11 +250,11 @@ impl ContextRef {
     }
 
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
-        self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.0) })
+        self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.inner()) })
     }
 
     pub fn prevent_extensions(&self, obj: &Value) -> Result<bool, Error> {
-        self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.0) })
+        self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.inner()) })
     }
 }
 
