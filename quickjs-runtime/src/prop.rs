@@ -203,7 +203,10 @@ pub trait DefineProperty {
     ) -> Result<bool, Error>;
 }
 
-impl DefineProperty for Local<'_, ffi::JSAtom> {
+impl<'a, T> DefineProperty for T
+where
+    T: NewAtom,
+{
     fn define_property(
         self,
         ctxt: &ContextRef,
@@ -213,6 +216,7 @@ impl DefineProperty for Local<'_, ffi::JSAtom> {
         setter: Option<&Value>,
         mut flags: Prop,
     ) -> Result<bool, Error> {
+        let atom = self.new_atom(ctxt);
         if val.is_some() {
             flags |= Prop::HAS_VALUE;
         }
@@ -222,17 +226,19 @@ impl DefineProperty for Local<'_, ffi::JSAtom> {
         if setter.is_some() {
             flags |= Prop::HAS_SET;
         }
-        ctxt.check_bool(unsafe {
+        let ret = unsafe {
             ffi::JS_DefineProperty(
                 ctxt.as_ptr(),
                 this.raw(),
-                self.inner,
+                atom,
                 val.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 flags.bits as i32,
             )
-        })
+        };
+        ctxt.free_atom(atom);
+        ctxt.check_bool(ret)
     }
 }
 
@@ -317,7 +323,10 @@ pub trait DefinePropertyGetSet {
     ) -> Result<bool, Error>;
 }
 
-impl DefinePropertyGetSet for Local<'_, ffi::JSAtom> {
+impl<T> DefinePropertyGetSet for T
+where
+    T: NewAtom,
+{
     fn define_property(
         self,
         ctxt: &ContextRef,
@@ -326,22 +335,25 @@ impl DefinePropertyGetSet for Local<'_, ffi::JSAtom> {
         setter: Option<&Value>,
         mut flags: Prop,
     ) -> Result<bool, Error> {
+        let atom = self.new_atom(ctxt);
         if getter.is_some() {
             flags |= Prop::HAS_GET;
         }
         if setter.is_some() {
             flags |= Prop::HAS_SET;
         }
-        ctxt.check_bool(unsafe {
+        let ret = unsafe {
             ffi::JS_DefinePropertyGetSet(
                 ctxt.as_ptr(),
                 this.raw(),
-                self.inner,
+                atom,
                 getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 flags.bits as i32,
             )
-        })
+        };
+        ctxt.free_atom(atom);
+        ctxt.check_bool(ret)
     }
 }
 
