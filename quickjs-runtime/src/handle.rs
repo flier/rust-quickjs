@@ -13,7 +13,6 @@ pub trait Unbindable {
     fn unbind(ctxt: &ContextRef, inner: Self);
 }
 
-#[derive(Debug)]
 pub struct Local<'a, T>
 where
     T: Unbindable,

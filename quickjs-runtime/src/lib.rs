@@ -31,7 +31,7 @@ mod value;
 
 pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
 pub use atom::NewAtom;
-pub use cfunc::CFunc;
+pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCFunctionMagic};
 pub use class::{ClassDef, ClassId};
 pub use context::{Context, ContextRef};
 pub use error::ErrorKind;

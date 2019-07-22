@@ -1,2 +1,6 @@
 [workspace]
 members = ["quickjs-sys", "quickjs-core", "quickjs-runtime", "quickjs-compiler"]
+
+[profile.release]
+opt-level = 3
+lto = true

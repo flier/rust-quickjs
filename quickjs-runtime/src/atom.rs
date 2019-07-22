@@ -52,6 +52,14 @@ impl fmt::Display for Local<'_, ffi::JSAtom> {
     }
 }
 
+impl fmt::Debug for Local<'_, ffi::JSAtom> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Atom")
+            .field(&self.to_cstr().to_string_lossy())
+            .finish()
+    }
+}
+
 impl Local<'_, ffi::JSAtom> {
     pub fn free(&self) {
         self.ctxt.free_atom(self.inner)

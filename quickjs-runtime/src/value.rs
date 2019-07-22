@@ -34,6 +34,7 @@ impl fmt::Debug for Value {
         unsafe {
             match self.tag() {
                 JS_TAG_INT => f.debug_tuple("Value").field(&self.u.int32).finish(),
+                JS_TAG_FLOAT64 => f.debug_tuple("Value").field(&self.u.float64).finish(),
                 JS_TAG_BOOL => f
                     .debug_tuple("Value")
                     .field(&(self.u.int32 != FALSE))
@@ -92,6 +93,14 @@ impl RuntimeRef {
 impl fmt::Display for Local<'_, Value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.to_cstr().unwrap().to_string_lossy())
+    }
+}
+
+impl fmt::Debug for Local<'_, Value> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Value")
+            .field(&self.to_cstr().unwrap().to_string_lossy())
+            .finish()
     }
 }
 
@@ -393,6 +402,12 @@ impl NewValue for f64 {
     }
 }
 
+impl NewValue for String {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        self.as_str().new_value(ctxt)
+    }
+}
+
 impl<'a> NewValue for &'a str {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         unsafe { ffi::JS_NewStringLen(ctxt.as_ptr(), self.as_ptr() as *const _, self.len() as i32) }
@@ -570,6 +585,14 @@ impl Value {
             Some(unsafe { self.as_ptr() })
         } else {
             None
+        }
+    }
+
+    pub fn check_undefined(&self) -> Option<&Value> {
+        if self.is_undefined() {
+            None
+        } else {
+            Some(self)
         }
     }
 

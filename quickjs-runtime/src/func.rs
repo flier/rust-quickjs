@@ -9,6 +9,17 @@ pub trait Args {
     fn into_values(self, ctxt: &ContextRef) -> Self::Values;
 }
 
+impl<T> Args for T
+where
+    T: NewValue + Sized,
+{
+    type Values = [ffi::JSValue; 1];
+
+    fn into_values(self, ctxt: &ContextRef) -> Self::Values {
+        [self.new_value(ctxt)]
+    }
+}
+
 impl<T> Args for &[T]
 where
     T: NewValue + Clone,
