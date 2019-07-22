@@ -38,27 +38,43 @@ impl Runtime {
 
 impl ContextRef {
     pub fn new_userdata<T>(&self, v: T) -> Local<'_, Value> {
-        unsafe {
-            let obj = ffi::JS_NewObjectClass(self.as_ptr(), Runtime::userdata_class_id() as i32);
-            let ptr: *mut T = Box::into_raw(Box::new(v));
+        let obj = self.new_object_class(Runtime::userdata_class_id());
+        let ptr = Box::into_raw(Box::new(v));
 
-            trace!("new userdata {:p} @ {:?}", ptr, obj.u.ptr);
+        trace!("new userdata {:p} @ {:?}", ptr, obj.as_ptr::<()>());
 
-            ffi::JS_SetOpaque(obj, ptr as *mut _);
+        obj.set_opaque(ptr);
 
-            self.bind(obj)
-        }
+        self.bind(obj)
     }
 
     pub fn get_userdata_unchecked<T>(&self, obj: &Value) -> NonNull<T> {
-        unsafe {
-            let ptr: *mut T =
-                ffi::JS_GetOpaque2(self.as_ptr(), obj.raw(), Runtime::userdata_class_id())
-                    as *mut _;
+        let ptr = self.get_opaque(obj, Runtime::userdata_class_id());
 
-            trace!("got userdata {:p} @ {:?}", ptr, obj.u.ptr);
+        trace!("got userdata {:p} @ {:?}", ptr, obj.as_ptr::<()>());
 
-            NonNull::new_unchecked(ptr).cast()
-        }
+        unsafe { NonNull::new_unchecked(ptr) }
+    }
+}
+
+impl Value {
+    pub fn set_opaque<T>(&self, opaque: *mut T) {
+        unsafe { ffi::JS_SetOpaque(self.raw(), opaque as *mut _) }
+    }
+
+    pub fn get_opaque<T>(&self, class_id: ClassId) -> *mut T {
+        unsafe { ffi::JS_GetOpaque(self.raw(), class_id) as *mut _ }
+    }
+}
+
+impl Local<'_, Value> {
+    pub fn get_opaque<T>(&self, class_id: ClassId) -> *mut T {
+        self.ctxt.get_opaque(&self.inner, class_id)
+    }
+}
+
+impl ContextRef {
+    pub fn get_opaque<T>(&self, obj: &Value, class_id: ClassId) -> *mut T {
+        unsafe { ffi::JS_GetOpaque2(self.as_ptr(), obj.raw(), class_id) as *mut _ }
     }
 }

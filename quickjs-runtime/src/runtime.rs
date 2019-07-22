@@ -2,7 +2,7 @@ use std::mem;
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
-use crate::ffi;
+use crate::{ffi, value::FALSE, Value};
 
 const NO_LIMIT: isize = -1;
 
@@ -63,6 +63,14 @@ impl RuntimeRef {
         trace!("{:?} run GC", self);
 
         unsafe { ffi::JS_RunGC(self.as_ptr()) }
+    }
+
+    pub fn is_live_object(&self, obj: &Value) -> bool {
+        unsafe { ffi::JS_IsLiveObject(self.as_ptr(), obj.raw()) != FALSE }
+    }
+
+    pub fn is_gc_swap(&self) -> bool {
+        unsafe { ffi::JS_IsInGCSweep(self.as_ptr()) != FALSE }
     }
 
     pub fn memory_usage(&self) -> ffi::JSMemoryUsage {

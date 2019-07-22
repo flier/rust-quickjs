@@ -13,7 +13,7 @@ pub use crate::ffi::_bindgen_ty_1::*;
 use crate::{
     ffi,
     handle::{Bindable, Unbindable},
-    ContextRef, Local, RuntimeRef,
+    ClassId, ContextRef, Local, RuntimeRef,
 };
 
 pub const ERR: i32 = -1;
@@ -219,6 +219,18 @@ impl ContextRef {
 
     pub fn new_value<T: NewValue>(&self, s: T) -> Value {
         Value(s.new_value(self))
+    }
+
+    pub fn new_object_proto_class(&self, proto: &Value, class_id: ClassId) -> Value {
+        Value(unsafe { ffi::JS_NewObjectProtoClass(self.as_ptr(), proto.raw(), class_id) })
+    }
+
+    pub fn new_object_class(&self, class_id: ClassId) -> Value {
+        Value(unsafe { ffi::JS_NewObjectClass(self.as_ptr(), class_id as i32) })
+    }
+
+    pub fn new_object_proto(&self, proto: &Value) -> Value {
+        Value(unsafe { ffi::JS_NewObjectProto(self.as_ptr(), proto.raw()) })
     }
 
     pub fn new_object(&self) -> Value {
@@ -477,6 +489,7 @@ const fn mkval(tag: i32, val: i32) -> ffi::JSValue {
     }
 }
 
+#[allow(dead_code)]
 const fn mkptr<T>(tag: i32, val: *mut T) -> ffi::JSValue {
     ffi::JSValue {
         tag: tag as i64,
@@ -602,7 +615,7 @@ impl Value {
 
     pub fn as_object(&self) -> Option<NonNull<ffi::JSObject>> {
         if self.tag() == JS_TAG_OBJECT {
-            Some(unsafe { self.as_ptr() })
+            Some(self.as_ptr())
         } else {
             None
         }
@@ -616,8 +629,8 @@ impl Value {
         }
     }
 
-    unsafe fn as_ptr<T>(&self) -> NonNull<T> {
-        NonNull::new_unchecked(self.u.ptr).cast()
+    pub fn as_ptr<T>(&self) -> NonNull<T> {
+        unsafe { NonNull::new_unchecked(self.u.ptr).cast() }
     }
 
     fn has_ref_cnt(&self) -> bool {
