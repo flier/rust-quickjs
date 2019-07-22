@@ -120,18 +120,26 @@ impl NewValue for ErrorKind {
 
         match self {
             Throw(msg) => ctxt.throw(msg),
-            Error(msg) => ctxt.throw_error(&msg),
-            Custom(name, msg) => ctxt.throw_custom_error(&name, &msg),
-            EvalError(msg) => ctxt.throw_custom_error("EvalError", &msg),
+            Error(msg) => ctxt.throw_error(msg),
+            Custom(name, msg) => ctxt.throw_custom_error(&name, msg),
+            EvalError(msg) => ctxt.throw_custom_error("EvalError", msg),
             InternalError(msg) => ctxt.throw_internal_error(msg),
             RangeError(msg) => ctxt.throw_range_error(msg),
             ReferenceError(msg) => ctxt.throw_reference_error(msg),
             SyntaxError(msg) => ctxt.throw_syntax_error(msg),
             TypeError(msg) => ctxt.throw_type_error(msg),
-            URIError(msg) => ctxt.throw_custom_error("URIError", &msg),
+            URIError(msg) => ctxt.throw_custom_error("URIError", msg),
         }
         .into_inner()
         .raw()
+    }
+}
+
+impl<'a> Local<'a, Value> {
+    pub fn ok(mut self) -> Result<Local<'a, Value>, Error> {
+        let v = self.take();
+
+        self.ctxt.check_exception(v)
     }
 }
 
@@ -161,27 +169,31 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_NewError(self.as_ptr()) })
     }
 
-    pub fn throw_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_error<T: ToString>(&self, msg: T) -> Local<Value> {
         let err = self.new_error();
 
-        err.define_property_value("message", msg, Prop::WRITABLE | Prop::CONFIGURABLE)
-            .expect("message");
+        err.define_property_value(
+            "message",
+            msg.to_string(),
+            Prop::WRITABLE | Prop::CONFIGURABLE,
+        )
+        .expect("message");
 
-        err
+        self.throw(err)
     }
 
     pub fn throw_out_of_memory(&self) -> Local<Value> {
         self.bind(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
     }
 
-    pub fn throw_custom_error(&self, name: &str, msg: &str) -> Local<Value> {
+    pub fn throw_custom_error<T: ToString>(&self, name: &str, msg: T) -> Local<Value> {
         if let Some(ctor) = self.global_object().get_property(name) {
-            match ctor.call_constructor(msg) {
-                Ok(err) => self.bind(err.into_inner()),
-                Err(err) => self.throw_error(&err.to_string()),
+            match ctor.call_constructor(msg.to_string()) {
+                Ok(err) => self.throw(err),
+                Err(err) => self.throw_error(err),
             }
         } else {
-            self.throw_error(&format!("class `{}` not found", name))
+            self.throw_error(format!("class `{}` not found", name))
         }
     }
 
@@ -318,6 +330,15 @@ mod tests {
                 .unwrap(),
             &InternalError("out of memory".into())
         );
+
+        assert_eq!(
+            ctxt.throw_custom_error("URIError", "malformed URI sequence")
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &URIError("malformed URI sequence".into())
+        );
     }
 
     #[test]
@@ -333,7 +354,16 @@ mod tests {
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
             &Error("Whoops!".into())
-        )
+        );
+
+        assert_eq!(
+            ctxt.throw_error("Whoops!")
+                .ok()
+                .unwrap_err()
+                .downcast_ref::<ErrorKind>()
+                .unwrap(),
+            &Error("Whoops!".into())
+        );
     }
 
     #[test]
@@ -343,9 +373,8 @@ mod tests {
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        let err = ctxt
-            .eval(
-                r#"
+        ctxt.eval(
+            r#"
 class CustomError extends Error {
     constructor(...params) {
         super(...params);
@@ -353,18 +382,32 @@ class CustomError extends Error {
         this.name = 'CustomError';
     }
 }
-
-throw new CustomError('foobar');
 "#,
+            "<evalScript>",
+            Eval::GLOBAL,
+        )
+        .unwrap();
+
+        assert_eq!(
+            ctxt.eval(
+                "throw new CustomError('Whoops!')",
                 "<evalScript>",
                 Eval::GLOBAL,
             )
-            .unwrap_err();
+            .unwrap_err()
+            .downcast_ref::<ErrorKind>()
+            .unwrap(),
+            &Custom("CustomError".into(), "Whoops!".into())
+        );
 
-        assert_eq!(
-            err.downcast_ref::<ErrorKind>().unwrap(),
-            &Custom("CustomError".into(), "foobar".into())
-        )
+        // assert_eq!(
+        //     ctxt.throw_custom_error("CustomError", "Whoops!")
+        //         .ok()
+        //         .unwrap_err()
+        //         .downcast_ref::<ErrorKind>()
+        //         .unwrap(),
+        //     &Custom("CustomError".into(), "Whoops!".into())
+        // );
     }
 
     #[test]

@@ -125,12 +125,6 @@ impl<'a> Local<'a, Value> {
         }
     }
 
-    pub fn ok(mut self) -> Result<Local<'a, Value>, Error> {
-        let v = self.take();
-
-        self.ctxt.check_exception(v)
-    }
-
     pub fn free(mut self) {
         let v = self.take();
 
