@@ -237,7 +237,7 @@ impl DefineProperty for Local<'_, ffi::JSAtom> {
 }
 
 pub trait DefinePropertyValue {
-    fn define_property_value<T: NewValue>(
+    fn define_property<T: NewValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -247,7 +247,7 @@ pub trait DefinePropertyValue {
 }
 
 impl DefinePropertyValue for u32 {
-    fn define_property_value<T: NewValue>(
+    fn define_property<T: NewValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -267,7 +267,7 @@ impl DefinePropertyValue for u32 {
 }
 
 impl DefinePropertyValue for &'_ str {
-    fn define_property_value<T: NewValue>(
+    fn define_property<T: NewValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -287,7 +287,7 @@ impl DefinePropertyValue for &'_ str {
 }
 
 impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
-    fn define_property_value<T: NewValue>(
+    fn define_property<T: NewValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -300,6 +300,45 @@ impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
                 this.raw(),
                 self.inner,
                 val.new_value(ctxt),
+                flags.bits as i32,
+            )
+        })
+    }
+}
+
+pub trait DefinePropertyGetSet {
+    fn define_property(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error>;
+}
+
+impl DefinePropertyGetSet for Local<'_, ffi::JSAtom> {
+    fn define_property(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        mut flags: Prop,
+    ) -> Result<bool, Error> {
+        if getter.is_some() {
+            flags |= Prop::HAS_GET;
+        }
+        if setter.is_some() {
+            flags |= Prop::HAS_SET;
+        }
+        ctxt.check_bool(unsafe {
+            ffi::JS_DefinePropertyGetSet(
+                ctxt.as_ptr(),
+                this.raw(),
+                self.inner,
+                getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 flags.bits as i32,
             )
         })
@@ -347,6 +386,17 @@ impl<'a> Local<'a, Value> {
     ) -> Result<bool, Error> {
         self.ctxt
             .define_property_value(&self.inner, prop, val, flags)
+    }
+
+    pub fn define_property_get_set<T: DefinePropertyGetSet>(
+        &self,
+        prop: T,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        self.ctxt
+            .define_property_get_set(&self.inner, prop, getter, setter, flags)
     }
 
     pub fn is_extensible(&self) -> Result<bool, Error> {
@@ -399,7 +449,18 @@ impl ContextRef {
         val: V,
         flags: Prop,
     ) -> Result<bool, Error> {
-        prop.define_property_value(self, this, val, flags)
+        prop.define_property(self, this, val, flags)
+    }
+
+    pub fn define_property_get_set<T: DefinePropertyGetSet>(
+        &self,
+        this: &Value,
+        prop: T,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        prop.define_property(self, this, getter, setter, flags)
     }
 
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
