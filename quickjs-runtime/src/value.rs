@@ -74,6 +74,18 @@ impl Into<ffi::JSValue> for Value {
     }
 }
 
+impl<'a> Into<Value> for Local<'a, Value> {
+    fn into(self) -> Value {
+        self.into_inner()
+    }
+}
+
+impl<'a> Into<ffi::JSValue> for Local<'a, Value> {
+    fn into(self) -> ffi::JSValue {
+        self.into_inner().raw()
+    }
+}
+
 impl RuntimeRef {
     pub fn free_value(&self, v: Value) {
         if v.has_ref_cnt() {

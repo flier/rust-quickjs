@@ -40,6 +40,12 @@ impl Unbindable for ffi::JSAtom {
     }
 }
 
+impl Into<ffi::JSAtom> for Local<'_, ffi::JSAtom> {
+    fn into(self) -> ffi::JSAtom {
+        self.into_inner()
+    }
+}
+
 impl Clone for Local<'_, ffi::JSAtom> {
     fn clone(&self) -> Self {
         self.ctxt.clone_atom(self.inner)

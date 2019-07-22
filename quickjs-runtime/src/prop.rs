@@ -191,6 +191,121 @@ where
     }
 }
 
+pub trait DefineProperty {
+    fn define_property(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: Option<Value>,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error>;
+}
+
+impl DefineProperty for Local<'_, ffi::JSAtom> {
+    fn define_property(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: Option<Value>,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        mut flags: Prop,
+    ) -> Result<bool, Error> {
+        if val.is_some() {
+            flags |= Prop::HAS_VALUE;
+        }
+        if getter.is_some() {
+            flags |= Prop::HAS_GET;
+        }
+        if setter.is_some() {
+            flags |= Prop::HAS_SET;
+        }
+        ctxt.check_bool(unsafe {
+            ffi::JS_DefineProperty(
+                ctxt.as_ptr(),
+                this.raw(),
+                self.inner,
+                val.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                flags.bits as i32,
+            )
+        })
+    }
+}
+
+pub trait DefinePropertyValue {
+    fn define_property_value<T: NewValue>(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: T,
+        flags: Prop,
+    ) -> Result<bool, Error>;
+}
+
+impl DefinePropertyValue for u32 {
+    fn define_property_value<T: NewValue>(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: T,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        ctxt.check_bool(unsafe {
+            ffi::JS_DefinePropertyValueUint32(
+                ctxt.as_ptr(),
+                this.raw(),
+                self,
+                val.new_value(ctxt),
+                flags.bits as i32,
+            )
+        })
+    }
+}
+
+impl DefinePropertyValue for &'_ str {
+    fn define_property_value<T: NewValue>(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: T,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        ctxt.check_bool(unsafe {
+            ffi::JS_DefinePropertyValueStr(
+                ctxt.as_ptr(),
+                this.raw(),
+                CString::new(self)?.as_ptr(),
+                val.new_value(ctxt),
+                flags.bits as i32,
+            )
+        })
+    }
+}
+
+impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
+    fn define_property_value<T: NewValue>(
+        self,
+        ctxt: &ContextRef,
+        this: &Value,
+        val: T,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        ctxt.check_bool(unsafe {
+            ffi::JS_DefinePropertyValue(
+                ctxt.as_ptr(),
+                this.raw(),
+                self.inner,
+                val.new_value(ctxt),
+                flags.bits as i32,
+            )
+        })
+    }
+}
+
 impl<'a> Local<'a, Value> {
     pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
         self.ctxt.get_property(&self.inner, prop)
@@ -210,6 +325,28 @@ impl<'a> Local<'a, Value> {
 
     pub fn delete_property<T: DeleteProperty>(&self, prop: T) -> Result<bool, Error> {
         self.ctxt.delete_property(&self.inner, prop)
+    }
+
+    pub fn define_property<T: DefineProperty>(
+        &self,
+        prop: T,
+        val: Option<Value>,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        self.ctxt
+            .define_property(&self.inner, prop, val, getter, setter, flags)
+    }
+
+    pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
+        &self,
+        prop: T,
+        val: V,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        self.ctxt
+            .define_property_value(&self.inner, prop, val, flags)
     }
 
     pub fn is_extensible(&self) -> Result<bool, Error> {
@@ -241,6 +378,28 @@ impl ContextRef {
 
     pub fn delete_property<T: DeleteProperty>(&self, this: &Value, prop: T) -> Result<bool, Error> {
         prop.delete_property(self, this)
+    }
+
+    pub fn define_property<T: DefineProperty>(
+        &self,
+        this: &Value,
+        prop: T,
+        val: Option<Value>,
+        getter: Option<&Value>,
+        setter: Option<&Value>,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        prop.define_property(self, this, val, getter, setter, flags)
+    }
+
+    pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
+        &self,
+        this: &Value,
+        prop: T,
+        val: V,
+        flags: Prop,
+    ) -> Result<bool, Error> {
+        prop.define_property_value(self, this, val, flags)
     }
 
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {

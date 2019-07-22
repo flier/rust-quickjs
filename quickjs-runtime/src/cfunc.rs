@@ -9,7 +9,7 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{
     ffi::{self, JSCFunctionEnum::*},
-    Args, ContextRef, Local, NewValue, Value,
+    Args, ContextRef, Local, NewValue, Prop, Value,
 };
 
 pub type CFunction<T> = fn(&ContextRef, Option<&Value>, &[Value]) -> T;
@@ -92,7 +92,9 @@ impl ContextRef {
 
         let func = self.new_c_function_data(stub::<T>, length, 0, self.new_userdata(func))?;
 
-        if let Some(name) = name {}
+        if let Some(name) = name {
+            func.define_property_value("name", name, Prop::CONFIGURABLE)?;
+        }
 
         Ok(func)
     }

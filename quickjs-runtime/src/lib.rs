@@ -39,6 +39,6 @@ pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
-pub use prop::{DeleteProperty, GetProperty, HasProperty, SetProperty};
+pub use prop::{DefinePropertyValue, DeleteProperty, GetProperty, HasProperty, Prop, SetProperty};
 pub use runtime::{Runtime, RuntimeRef};
 pub use value::{NewValue, Value};
