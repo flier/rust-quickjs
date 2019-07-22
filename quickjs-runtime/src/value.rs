@@ -405,25 +405,25 @@ impl NewValue for ffi::JSValue {
 
 impl NewValue for Value {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.inner()
+        self.raw()
     }
 }
 
 impl<'a> NewValue for &'a Value {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.inner()
+        self.raw()
     }
 }
 
 impl<'a> NewValue for Local<'a, Value> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.into_inner().inner()
+        self.into_inner().into_raw()
     }
 }
 
 impl<'a> NewValue for &'a Local<'a, Value> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.inner()
+        self.raw()
     }
 }
 
@@ -472,11 +472,11 @@ impl Value {
         Value(mkval(JS_TAG_UNINITIALIZED, 0))
     }
 
-    pub fn inner(&self) -> ffi::JSValue {
+    pub fn raw(&self) -> ffi::JSValue {
         self.0
     }
 
-    pub fn into_inner(self) -> ffi::JSValue {
+    pub fn into_raw(self) -> ffi::JSValue {
         self.0
     }
 
@@ -485,7 +485,7 @@ impl Value {
     }
 
     pub fn is_number(&self) -> bool {
-        unsafe { ffi::JS_IsNumber(self.inner()) != FALSE }
+        unsafe { ffi::JS_IsNumber(self.raw()) != FALSE }
     }
 
     pub fn is_integer(&self) -> bool {

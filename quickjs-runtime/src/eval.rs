@@ -65,7 +65,7 @@ impl ContextRef {
     }
 
     pub fn eval_function(&self, func: Value, this: &Value) -> Result<Local<Value>, Error> {
-        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into_inner(), this.inner()) })
+        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into_raw(), this.raw()) })
             .ok()
     }
 
@@ -139,7 +139,7 @@ mod tests {
             "New York"
         );
 
-        // let age = obj.get_property("age").unwrap().into_inner();
+        // let age = obj.get_property("age").unwrap().into_raw();
 
         // ctxt.free_value(age);
     }

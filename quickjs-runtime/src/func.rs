@@ -123,11 +123,11 @@ impl Local<'_, Value> {
 
 impl ContextRef {
     pub fn is_function(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.inner()) != FALSE }
+        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.raw()) != FALSE }
     }
 
     pub fn is_constructor(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.inner()) != FALSE }
+        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.raw()) != FALSE }
     }
 
     pub fn call<T: Args>(
@@ -142,8 +142,8 @@ impl ContextRef {
             unsafe {
                 ffi::JS_Call(
                     self.as_ptr(),
-                    func.inner(),
-                    this.map_or_else(|| Value::undefined().inner(), |v| v.inner()),
+                    func.raw(),
+                    this.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                     args.len() as i32,
                     args.as_ptr() as *mut _,
                 )
@@ -170,7 +170,7 @@ impl ContextRef {
         let res = self.bind(unsafe {
             ffi::JS_Invoke(
                 self.as_ptr(),
-                this.inner(),
+                this.raw(),
                 atom,
                 args.len() as i32,
                 args.as_ptr() as *mut _,
@@ -190,7 +190,7 @@ impl ContextRef {
         let ret = unsafe {
             ffi::JS_CallConstructor(
                 self.as_ptr(),
-                func.inner(),
+                func.raw(),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )
@@ -214,8 +214,8 @@ impl ContextRef {
         let ret = unsafe {
             ffi::JS_CallConstructor2(
                 self.as_ptr(),
-                func.inner(),
-                new_target.map_or_else(|| Value::undefined().inner(), |v| v.inner()),
+                func.raw(),
+                new_target.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )

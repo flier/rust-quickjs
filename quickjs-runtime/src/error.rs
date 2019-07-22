@@ -99,7 +99,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
 
 impl ContextRef {
     pub fn is_error(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsError(self.as_ptr(), val.inner()) != FALSE }
+        unsafe { ffi::JS_IsError(self.as_ptr(), val.raw()) != FALSE }
     }
 
     pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
