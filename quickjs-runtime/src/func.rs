@@ -110,7 +110,7 @@ tuple_args! { A B C D E F G H I J K L M N O P Q R }
 tuple_args! { A B C D E F G H I J K L M N O P Q R S }
 tuple_args! { A B C D E F G H I J K L M N O P Q R S T }
 
-impl Local<'_, Value> {
+impl<'a> Local<'a, Value> {
     pub fn call<T: Args>(&self, this: Option<&Value>, args: T) -> Result<Local<Value>, Error> {
         self.ctxt.call(&self.inner, this, args)
     }

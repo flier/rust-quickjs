@@ -7,10 +7,10 @@ use foreign_types::ForeignTypeRef;
 use crate::{
     ffi,
     value::{ERR, FALSE, TRUE},
-    ContextRef, Local, NewValue, Value,
+    ContextRef, Local, NewValue, Prop, Value,
 };
 
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, Clone, Fail, PartialEq)]
 pub enum ErrorKind {
     #[fail(display = "Throw: {}", _0)]
     Throw(String),
@@ -97,6 +97,44 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
     }
 }
 
+impl NewValue for Result<Local<'_, Value>, Error> {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        match self {
+            Ok(v) => v,
+            Err(err) => {
+                if let Some(err) = err.downcast_ref::<ErrorKind>() {
+                    ctxt.throw(err)
+                } else {
+                    ctxt.throw(err.to_string())
+                }
+            }
+        }
+        .into_inner()
+        .raw()
+    }
+}
+
+impl NewValue for ErrorKind {
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        use ErrorKind::*;
+
+        match self {
+            Throw(msg) => ctxt.throw(msg),
+            Error(msg) => ctxt.throw_error(&msg),
+            Custom(name, msg) => ctxt.throw_custom_error(&name, &msg),
+            EvalError(msg) => ctxt.throw_custom_error("EvalError", &msg),
+            InternalError(msg) => ctxt.throw_internal_error(msg),
+            RangeError(msg) => ctxt.throw_range_error(msg),
+            ReferenceError(msg) => ctxt.throw_reference_error(msg),
+            SyntaxError(msg) => ctxt.throw_syntax_error(msg),
+            TypeError(msg) => ctxt.throw_type_error(msg),
+            URIError(msg) => ctxt.throw_custom_error("URIError", &msg),
+        }
+        .into_inner()
+        .raw()
+    }
+}
+
 impl ContextRef {
     pub fn is_error(&self, val: &Value) -> bool {
         unsafe { ffi::JS_IsError(self.as_ptr(), val.raw()) != FALSE }
@@ -123,11 +161,31 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_NewError(self.as_ptr()) })
     }
 
+    pub fn throw_error(&self, msg: &str) -> Local<Value> {
+        let err = self.new_error();
+
+        err.define_property_value("message", msg, Prop::WRITABLE | Prop::CONFIGURABLE)
+            .expect("message");
+
+        err
+    }
+
     pub fn throw_out_of_memory(&self) -> Local<Value> {
         self.bind(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
     }
 
-    pub fn throw_syntax_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_custom_error(&self, name: &str, msg: &str) -> Local<Value> {
+        if let Some(ctor) = self.global_object().get_property(name) {
+            match ctor.call_constructor(msg) {
+                Ok(err) => self.bind(err.into_inner()),
+                Err(err) => self.throw_error(&err.to_string()),
+            }
+        } else {
+            self.throw_error(&format!("class `{}` not found", name))
+        }
+    }
+
+    pub fn throw_syntax_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_ThrowSyntaxError(
                 self.as_ptr(),
@@ -137,7 +195,7 @@ impl ContextRef {
         })
     }
 
-    pub fn throw_type_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_type_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_ThrowTypeError(
                 self.as_ptr(),
@@ -147,7 +205,7 @@ impl ContextRef {
         })
     }
 
-    pub fn throw_reference_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_reference_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_ThrowReferenceError(
                 self.as_ptr(),
@@ -157,7 +215,7 @@ impl ContextRef {
         })
     }
 
-    pub fn throw_range_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_range_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_ThrowRangeError(
                 self.as_ptr(),
@@ -167,7 +225,7 @@ impl ContextRef {
         })
     }
 
-    pub fn throw_internal_error(&self, msg: &str) -> Local<Value> {
+    pub fn throw_internal_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_ThrowInternalError(
                 self.as_ptr(),
