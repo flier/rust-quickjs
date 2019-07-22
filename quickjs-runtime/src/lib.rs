@@ -15,6 +15,7 @@ use quickjs_sys as ffi;
 mod macros;
 mod arraybuf;
 mod atom;
+mod cfunc;
 mod context;
 mod error;
 mod eval;
@@ -26,6 +27,7 @@ mod value;
 
 pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
 pub use atom::NewAtom;
+pub use cfunc::CFunc;
 pub use context::{Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::Eval;

@@ -152,6 +152,10 @@ impl<'a> Local<'a, Value> {
         self.ctxt.bind(self.ctxt.to_string(&self.inner))
     }
 
+    pub fn to_property_key(&self) -> Local<Value> {
+        self.ctxt.bind(self.ctxt.to_property_key(&self.inner))
+    }
+
     pub fn to_cstr(&self) -> Option<Local<&CStr>> {
         self.ctxt.to_cstr(&self.inner)
     }
@@ -250,6 +254,10 @@ impl ContextRef {
 
     pub fn to_string(&self, val: &Value) -> Value {
         Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
+    }
+
+    pub fn to_property_key(&self, val: &Value) -> Value {
+        Value(unsafe { ffi::JS_ToPropertyKey(self.as_ptr(), val.0) })
     }
 
     pub fn to_cstr(&self, val: &Value) -> Option<Local<&CStr>> {
@@ -410,20 +418,20 @@ impl NewValue for Value {
 }
 
 impl<'a> NewValue for &'a Value {
-    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.raw()
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        ctxt.clone_value(self).into()
     }
 }
 
 impl<'a> NewValue for Local<'a, Value> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.into_inner().into_raw()
+        self.into_inner().into()
     }
 }
 
 impl<'a> NewValue for &'a Local<'a, Value> {
-    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.raw()
+    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+        ctxt.clone_value(self).into()
     }
 }
 
@@ -473,10 +481,6 @@ impl Value {
     }
 
     pub fn raw(&self) -> ffi::JSValue {
-        self.0
-    }
-
-    pub fn into_raw(self) -> ffi::JSValue {
         self.0
     }
 

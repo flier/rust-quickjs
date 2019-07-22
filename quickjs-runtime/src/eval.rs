@@ -65,7 +65,7 @@ impl ContextRef {
     }
 
     pub fn eval_function(&self, func: Value, this: &Value) -> Result<Local<Value>, Error> {
-        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into_raw(), this.raw()) })
+        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into(), this.raw()) })
             .ok()
     }
 
