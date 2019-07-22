@@ -43,5 +43,5 @@ pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, GetProperty, HasProperty, Prop,
     SetProperty,
 };
-pub use runtime::{Runtime, RuntimeRef};
+pub use runtime::{Interrupt, InterruptHandler, Runtime, RuntimeRef};
 pub use value::{NewValue, Value};

@@ -1,8 +1,14 @@
 use std::mem;
+use std::os::raw::{c_int, c_void};
+use std::ptr;
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
-use crate::{ffi, value::FALSE, Value};
+use crate::{
+    ffi,
+    value::{FALSE, TRUE},
+    Value,
+};
 
 const NO_LIMIT: isize = -1;
 
@@ -82,7 +88,33 @@ impl RuntimeRef {
             usage
         }
     }
+
+    pub fn set_interrupt_handler(&self, handler: InterruptHandler) {
+        unsafe {
+            if let Some(func) = handler {
+                unsafe extern "C" fn stub(rt: *mut ffi::JSRuntime, opaque: *mut c_void) -> c_int {
+                    let rt = RuntimeRef::from_ptr(rt);
+                    let func: fn(rt: &RuntimeRef) -> Interrupt = *(opaque as *mut _);
+
+                    match func(rt) {
+                        Interrupt::Break => TRUE,
+                        Interrupt::Continue => FALSE,
+                    }
+                }
+
+                ffi::JS_SetInterruptHandler(self.as_ptr(), Some(stub), func as *mut _)
+            } else {
+                ffi::JS_SetInterruptHandler(self.as_ptr(), None, ptr::null_mut())
+            }
+        }
+    }
 }
+
+pub enum Interrupt {
+    Break,
+    Continue,
+}
+pub type InterruptHandler = Option<fn(rt: &RuntimeRef) -> Interrupt>;
 
 #[cfg(test)]
 mod tests {
