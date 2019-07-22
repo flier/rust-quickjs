@@ -1,5 +1,4 @@
 use std::ffi::CString;
-use std::mem;
 use std::os::raw::c_int;
 use std::ptr;
 use std::slice;
@@ -85,7 +84,7 @@ impl ContextRef {
                 magic
             );
 
-            func(ctxt, this, mem::transmute(args)).new_value(ctxt)
+            func(ctxt, this, &*(args as *const _ as *const _)).new_value(ctxt)
         }
 
         trace!("new C function @ {:p}", &func);

@@ -184,6 +184,10 @@ impl<'a> Local<'a, Value> {
     pub fn to_str(&self) -> Option<Cow<str>> {
         self.to_cstr().map(|s| s.to_string_lossy())
     }
+
+    pub fn instance_of(&self, obj: &Value) -> Result<bool, Error> {
+        self.ctxt.is_instance_of(&self.inner, obj)
+    }
 }
 
 impl ContextRef {
@@ -298,6 +302,10 @@ impl ContextRef {
                 )
             }
         }
+    }
+
+    pub fn is_instance_of(&self, val: &Value, obj: &Value) -> Result<bool, Error> {
+        self.check_bool(unsafe { ffi::JS_IsInstanceOf(self.as_ptr(), val.raw(), obj.raw()) })
     }
 }
 
@@ -614,5 +622,47 @@ impl Value {
 
     fn has_ref_cnt(&self) -> bool {
         (self.tag() as u32) >= (JS_TAG_FIRST as u32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Context, Eval, Runtime};
+
+    #[test]
+    fn instance_of() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let car = ctxt
+            .eval(
+                r#"
+function Car(make, model, year) {
+    this.make = make;
+    this.model = model;
+    this.year = year;
+}
+
+function Person(name, age) {
+    this.name = name;
+    this.age = age;
+}
+
+new Car('Honda', 'Accord', 1998)"#,
+                "<evalScript>",
+                Eval::GLOBAL,
+            )
+            .unwrap();
+
+        let global = ctxt.global_object();
+
+        assert!(car
+            .instance_of(&global.get_property("Car").unwrap())
+            .unwrap());
+        assert!(!car
+            .instance_of(&global.get_property("Person").unwrap())
+            .unwrap());
     }
 }
