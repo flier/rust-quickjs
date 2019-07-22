@@ -409,9 +409,21 @@ impl NewValue for Value {
     }
 }
 
+impl<'a> NewValue for &'a Value {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
+        self.inner()
+    }
+}
+
 impl<'a> NewValue for Local<'a, Value> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
         self.into_inner().inner()
+    }
+}
+
+impl<'a> NewValue for &'a Local<'a, Value> {
+    fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
+        self.inner()
     }
 }
 
@@ -430,7 +442,7 @@ impl Value {
     pub const fn nan() -> Self {
         Value(ffi::JSValue {
             u: ffi::JSValueUnion {
-                float64: core::f64::NAN,
+                float64: std::f64::NAN,
             },
             tag: JS_TAG_FLOAT64 as i64,
         })

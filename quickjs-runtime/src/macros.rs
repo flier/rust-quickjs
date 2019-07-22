@@ -12,8 +12,8 @@ macro_rules! impl_foreign_type {
     };
 
     (__impl_debug $name:ident) => {
-        impl ::core::fmt::Debug for $name {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+        impl ::std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 f.debug_tuple(stringify!($name))
                     .field(&self.as_ptr())
                     .finish()
@@ -22,7 +22,7 @@ macro_rules! impl_foreign_type {
     };
 
     (__impl_partial_eq $name:ident, $rhs:ident) => {
-        impl ::core::cmp::PartialEq<$rhs> for $name {
+        impl ::std::cmp::PartialEq<$rhs> for $name {
             fn eq(&self, other: &$rhs) -> bool {
                 self.as_ptr() == other.as_ptr()
             }
