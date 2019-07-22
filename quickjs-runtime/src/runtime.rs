@@ -29,7 +29,11 @@ impl Default for Runtime {
 impl Runtime {
     /// Construct a new `Runtime`.
     pub fn new() -> Self {
-        unsafe { Runtime::from_ptr(ffi::JS_NewRuntime()) }
+        let runtime = unsafe { Runtime::from_ptr(ffi::JS_NewRuntime()) };
+
+        runtime.register_userdata_class();
+
+        runtime
     }
 }
 

@@ -437,8 +437,15 @@ impl<'a> NewValue for &'a Local<'a, Value> {
 
 const fn mkval(tag: i32, val: i32) -> ffi::JSValue {
     ffi::JSValue {
-        u: ffi::JSValueUnion { int32: val },
         tag: tag as i64,
+        u: ffi::JSValueUnion { int32: val },
+    }
+}
+
+const fn mkptr<T>(tag: i32, val: *mut T) -> ffi::JSValue {
+    ffi::JSValue {
+        tag: tag as i64,
+        u: ffi::JSValueUnion { ptr: val as *mut _ },
     }
 }
 

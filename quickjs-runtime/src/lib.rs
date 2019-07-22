@@ -7,15 +7,18 @@ extern crate bitflags;
 #[macro_use]
 extern crate foreign_types;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate cstr;
 
-use quickjs_sys as ffi;
+pub use quickjs_sys as ffi;
 
 #[macro_use]
 mod macros;
 mod arraybuf;
 mod atom;
 mod cfunc;
+mod class;
 mod context;
 mod error;
 mod eval;
@@ -23,11 +26,13 @@ mod func;
 mod handle;
 mod prop;
 mod runtime;
+mod userdata;
 mod value;
 
 pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
 pub use atom::NewAtom;
 pub use cfunc::CFunc;
+pub use class::{ClassDef, ClassId};
 pub use context::{Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::Eval;
