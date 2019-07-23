@@ -136,10 +136,18 @@ impl NewValue for ErrorKind {
 }
 
 impl<'a> Local<'a, Value> {
-    pub fn ok(mut self) -> Result<Local<'a, Value>, Error> {
-        let v = self.take();
+    pub fn ok(self) -> Result<Local<'a, Value>, Error> {
+        if self.inner.is_exception() {
+            let err = self.ctxt.take_exception()?;
 
-        self.ctxt.check_exception(v)
+            trace!("-> {:?}", err);
+
+            Err(err.into())
+        } else {
+            trace!("-> {:?}", self.inner);
+
+            Ok(self)
+        }
     }
 }
 
@@ -245,20 +253,6 @@ impl ContextRef {
                 CString::new(msg).expect("msg").as_ptr(),
             )
         })
-    }
-
-    pub fn check_exception(&self, v: Value) -> Result<Local<Value>, Error> {
-        if v.is_exception() {
-            let err = self.take_exception()?;
-
-            trace!("-> {:?}", err);
-
-            Err(err.into())
-        } else {
-            trace!("-> {:?}", v);
-
-            Ok(self.bind(v))
-        }
     }
 
     pub fn check_error(&self, ret: i32) -> Result<i32, Error> {

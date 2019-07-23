@@ -64,13 +64,14 @@ impl ContextRef {
         .ok()
     }
 
-    pub fn parse_json<T: AsRef<str>>(
+    pub fn parse_json<T: Into<Vec<u8>>>(
         &self,
         input: T,
         filename: &str,
     ) -> Result<Local<Value>, Error> {
-        let input = input.as_ref();
-        let filename = CString::new(filename).context("filename")?;
+        let input = CString::new(input)?;
+        let input = input.to_bytes_with_nul();
+        let filename = CString::new(filename)?;
 
         self.bind(unsafe {
             ffi::JS_ParseJSON(
@@ -128,14 +129,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(obj.get_property("name").unwrap().to_str().unwrap(), "John");
-        // assert_eq!(obj.get_property("age").unwrap().to_int32().unwrap(), 30);
+        assert_eq!(obj.get_property("age").unwrap().to_int32().unwrap(), 30);
         assert_eq!(
             obj.get_property("city").unwrap().to_str().unwrap(),
             "New York"
         );
-
-        // let age = obj.get_property("age").unwrap().into_raw();
-
-        // ctxt.free_value(age);
     }
 }

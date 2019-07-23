@@ -627,6 +627,14 @@ impl Value {
         unsafe { NonNull::new_unchecked(self.u.ptr).cast() }
     }
 
+    pub fn ref_cnt(&self) -> Option<i32> {
+        if self.has_ref_cnt() {
+            Some(unsafe { self.as_ptr::<ffi::JSRefCountHeader>().as_ref().ref_count })
+        } else {
+            None
+        }
+    }
+
     fn has_ref_cnt(&self) -> bool {
         (self.tag() as u32) >= (JS_TAG_FIRST as u32)
     }
