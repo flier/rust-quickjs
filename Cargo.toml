@@ -1,5 +1,5 @@
 [workspace]
-members = ["quickjs-sys", "quickjs-core", "quickjs-runtime", "quickjs-compiler"]
+members = ["qjs-sys", "qjs"]
 
 [profile.release]
 opt-level = 3

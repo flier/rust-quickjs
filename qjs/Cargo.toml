@@ -1,5 +1,5 @@
 [package]
-name = "quickjs-runtime"
+name = "qjs"
 version = "0.1.0"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
 edition = "2018"
@@ -14,7 +14,7 @@ foreign-types = "0.4"
 lazy_static = "1.3"
 cstr = "0.1"
 
-quickjs-sys = { version = "0.1", path = "../quickjs-sys" }
+qjs-sys = { version = "0.1", path = "../qjs-sys" }
 
 [dev-dependencies]
 pretty_env_logger = "0.3"
