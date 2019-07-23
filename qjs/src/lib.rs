@@ -11,7 +11,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate cstr;
 
-pub use quickjs_sys as ffi;
+pub use qjs_sys as ffi;
 
 #[macro_use]
 mod macros;
