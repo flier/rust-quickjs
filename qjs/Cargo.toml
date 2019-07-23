@@ -18,3 +18,5 @@ qjs-sys = { version = "0.1", path = "../qjs-sys" }
 
 [dev-dependencies]
 pretty_env_logger = "0.3"
+structopt = "0.2"
+tempfile = "3.1"

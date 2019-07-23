@@ -25,6 +25,7 @@ mod eval;
 mod func;
 mod handle;
 mod job;
+mod module;
 mod precompile;
 mod prop;
 mod runtime;

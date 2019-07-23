@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::ffi::CString;
+use std::ptr::NonNull;
 
 use failure::{err_msg, Error};
 use foreign_types::ForeignTypeRef;
@@ -266,6 +267,23 @@ impl ContextRef {
             trace!("-> {:?}", ret);
 
             Ok(ret)
+        }
+    }
+
+    pub fn check_null<T>(&self, ptr: Option<NonNull<T>>) -> Result<NonNull<T>, Error> {
+        match ptr {
+            Some(ptr) => {
+                trace!("-> {:?}", ptr);
+
+                Ok(ptr)
+            }
+            None => {
+                let err = self.take_exception()?;
+
+                trace!("-> {:?}", err);
+
+                Err(err.into())
+            }
         }
     }
 

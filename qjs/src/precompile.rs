@@ -25,18 +25,18 @@ bitflags! {
 }
 
 impl Local<'_, Value> {
-    pub fn write_bytecode(&self) -> Option<Vec<u8>> {
+    pub fn write_bytecode(&self) -> Result<Vec<u8>, Error> {
         self.ctxt.write_object(&self.inner, WriteObj::BYTECODE)
     }
 }
 
 impl ContextRef {
-    pub fn write_object(&self, obj: &Value, flags: WriteObj) -> Option<Vec<u8>> {
+    pub fn write_object(&self, obj: &Value, flags: WriteObj) -> Result<Vec<u8>, Error> {
         let mut len = 0;
 
-        NonNull::new(unsafe {
+        self.check_null(NonNull::new(unsafe {
             ffi::JS_WriteObject(self.as_ptr(), &mut len, obj.raw(), flags.bits as i32)
-        })
+        }))
         .map(|buf| unsafe {
             let data = slice::from_raw_parts(buf.cast().as_ptr(), len).to_vec();
 
