@@ -35,7 +35,7 @@ pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
 pub use atom::NewAtom;
 pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCFunctionMagic};
 pub use class::{ClassDef, ClassId};
-pub use context::{Context, ContextRef};
+pub use context::{Builder, Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
