@@ -24,6 +24,7 @@ mod error;
 mod eval;
 mod func;
 mod handle;
+mod job;
 mod prop;
 mod runtime;
 mod userdata;
@@ -39,6 +40,7 @@ pub use eval::Eval;
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
+pub use job::JobFunc;
 pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, GetProperty, HasProperty, Prop,
     SetProperty,
