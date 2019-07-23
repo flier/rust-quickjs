@@ -13,6 +13,8 @@ cfg_if! {
     }
 }
 
+pub const VERSION: &str = include_str!(concat!(env!("OUT_DIR"), "/quickjs/VERSION"));
+
 #[cfg(test)]
 mod tests {
     use super::*;
