@@ -25,6 +25,7 @@ mod eval;
 mod func;
 mod handle;
 mod job;
+mod precompile;
 mod prop;
 mod runtime;
 mod userdata;
@@ -41,6 +42,7 @@ pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
 pub use job::JobFunc;
+pub use precompile::{ReadObj, WriteObj};
 pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, GetProperty, HasProperty, Prop,
     SetProperty,
