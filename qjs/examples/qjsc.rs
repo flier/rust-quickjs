@@ -2,10 +2,12 @@
 extern crate log;
 
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::ffi::{CStr, OsStr};
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
+use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
@@ -30,6 +32,10 @@ pub struct Opt {
     /// Set the output filename
     #[structopt(name = "output", short = "o", parse(from_os_str))]
     out_filename: Option<PathBuf>,
+
+    /// quickjs directory
+    #[structopt(short = "I", parse(from_os_str))]
+    quickjs_dir: Option<PathBuf>,
 
     /// Only output bytecode in a C file
     #[structopt(short = "c")]
@@ -148,6 +154,75 @@ impl Opt {
 
         m
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        let mut v = Vec::new();
+        let mut date = !self.no_date;
+        let mut eval = !self.no_eval;
+        let mut string_normalize = !self.no_string_normalize;
+        let mut regexp = !self.no_regexp;
+        let mut json = !self.no_json;
+        let mut proxy = !self.no_proxy;
+        let mut map = !self.no_map;
+        let mut typedarray = !self.no_typedarray;
+        let mut promise = !self.no_promise;
+
+        for feature in &self.features {
+            match feature.as_str() {
+                "date" => date = true,
+                "no-date" => date = false,
+                "eval" => eval = true,
+                "no-eval" => eval = false,
+                "string-normalize" => string_normalize = true,
+                "no-string-normalize" => string_normalize = false,
+                "regexp" => regexp = true,
+                "no-regexp" => regexp = false,
+                "json" => json = true,
+                "no-json" => json = false,
+                "proxy" => proxy = true,
+                "no-proxy" => proxy = false,
+                "map" => map = true,
+                "no-map" => map = false,
+                "typedarray" => typedarray = true,
+                "no-typedarray" => typedarray = false,
+                "promise" => promise = true,
+                "no-promise" => promise = false,
+                s => {
+                    warn!("unknown feature: {}", s);
+                }
+            }
+        }
+
+        if date {
+            v.push("Date");
+        }
+        if eval {
+            v.push("Eval");
+        }
+        if string_normalize {
+            v.push("StringNormalize");
+        }
+        if regexp {
+            v.push("RegExp");
+        }
+        if json {
+            v.push("JSON");
+        }
+        if proxy {
+            v.push("Proxy");
+        }
+        if map {
+            v.push("MapSet");
+        }
+        if typedarray {
+            v.push("TypedArrays");
+        }
+        if promise {
+            v.push("Promise")
+        }
+
+        v
+    }
 }
 
 unsafe extern "C" fn jsc_module_loader(
@@ -174,39 +249,29 @@ unsafe extern "C" fn js_module_dummy_init(
     unreachable!()
 }
 
-pub struct Loader {
-    gen: Generator<File>,
-    cmodules: HashMap<String, String>,
-    static_init_modules: HashMap<String, String>,
-    cnames: HashMap<String, bool>,
-}
+pub struct Loader(Generator);
 
 impl Deref for Loader {
-    type Target = Generator<File>;
+    type Target = Generator;
 
     fn deref(&self) -> &Self::Target {
-        &self.gen
+        &self.0
     }
 }
 
 impl DerefMut for Loader {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.gen
+        &mut self.0
     }
 }
 
 impl Loader {
-    fn new(gen: Generator<File>) -> Self {
-        let cmodules = gen.cmodules();
-
-        Loader {
-            gen,
-            cmodules,
-            static_init_modules: HashMap::new(),
-            cnames: HashMap::new(),
-        }
+    fn new(gen: Generator) -> Self {
+        Loader(gen)
     }
+}
 
+impl Loader {
     fn compile_file(
         &mut self,
         ctxt: &ContextRef,
@@ -246,10 +311,10 @@ impl Loader {
         module_name: &str,
     ) -> Option<NonNull<ffi::JSModuleDef>> {
         // check if it is a declared C or system module
-        if let Some(short_name) = self.cmodules.get(module_name) {
+        if let Some(short_name) = self.cmodules.get(module_name).cloned() {
             // add in the static init module list
             self.static_init_modules
-                .insert(module_name.to_owned(), short_name.clone());
+                .insert(module_name.to_owned(), short_name.to_owned());
 
             // create a dummy module
             ctxt.new_c_module(module_name, Some(js_module_dummy_init))
@@ -270,9 +335,10 @@ impl Loader {
 
                             self.output_object_code(ctxt, &func, &cname)?;
 
-                            Ok(func.as_ptr())
+                            Ok(func)
                         })
                         .ok()
+                        .map(|func| func.as_ptr())
                 }
                 Err(err) => {
                     ctxt.throw_reference_error(format!(
@@ -300,12 +366,39 @@ fn get_c_name<S: AsRef<OsStr> + ?Sized>(s: &S) -> Option<&str> {
     Path::new(s).file_stem().and_then(|s| s.to_str())
 }
 
-pub struct Generator<W> {
-    opt: Opt,
-    w: W,
+enum Output {
+    TempFile(tempfile::NamedTempFile),
+    File(File),
+    Stdout,
 }
 
-impl<W> Deref for Generator<W> {
+impl io::Write for Output {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Output::TempFile(f) => f.write(buf),
+            Output::File(f) => f.write(buf),
+            Output::Stdout => io::stdout().lock().write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Output::TempFile(f) => f.flush(),
+            Output::File(f) => f.flush(),
+            Output::Stdout => io::stdout().lock().flush(),
+        }
+    }
+}
+
+pub struct Generator {
+    opt: Opt,
+    w: Output,
+    cmodules: HashMap<String, String>,
+    cnames: HashMap<String, bool>,
+    static_init_modules: HashMap<String, String>,
+}
+
+impl Deref for Generator {
     type Target = Opt;
 
     fn deref(&self) -> &Self::Target {
@@ -313,38 +406,48 @@ impl<W> Deref for Generator<W> {
     }
 }
 
-impl<W> DerefMut for Generator<W> {
+impl DerefMut for Generator {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.opt
     }
 }
 
-impl Generator<File> {
+impl Generator {
     fn new(opt: Opt) -> Result<Self, Error> {
         let w = if opt.output_type() == OutputType::Executable {
-            tempfile::tempfile()?
+            Output::TempFile(
+                tempfile::Builder::new()
+                    .prefix("qjs-")
+                    .suffix(".c")
+                    .tempfile()?,
+            )
+        } else if opt.out_filename == Some("-".into()) {
+            Output::Stdout
         } else {
-            File::open(opt.output_filename())?
+            Output::File(File::create(opt.output_filename())?)
         };
 
-        Ok(Generator { opt, w: w })
-    }
-}
+        let cmodules = opt.cmodules();
 
-impl<W> Generator<W>
-where
-    W: io::Write,
-{
+        Ok(Generator {
+            opt,
+            w,
+            cmodules,
+            static_init_modules: HashMap::new(),
+            cnames: HashMap::new(),
+        })
+    }
+
     fn output_header(&mut self) -> Result<(), Error> {
         writeln!(
             &mut self.w,
-            "/* File generated automatically by the QuickJS compiler. */"
+            "/* File generated automatically by the QuickJS compiler. */\n"
         )?;
 
         if self.opt.output_type() == OutputType::C {
-            writeln!(&mut self.w, "#include <inttypes.h>")?;
+            writeln!(&mut self.w, "#include <inttypes.h>\n")?;
         } else {
-            writeln!(&mut self.w, r#"#include "quickjs-libc.h""#)?;
+            writeln!(&mut self.w, "#include \"quickjs-libc.h\"\n")?;
         }
 
         Ok(())
@@ -370,15 +473,119 @@ where
             cname,
             buf.len()
         )?;
-        writeln!(&mut self.w, "const uint8_t {}[{}] = {{", cname, buf.len())?;
+        write!(
+            &mut self.w,
+            "const uint8_t {}[{}] = {{\n\t",
+            cname,
+            buf.len()
+        )?;
         for (i, b) in buf.iter().enumerate() {
-            write!(&mut self.w, "0x{:02x}, ", b)?;
-
             if i > 0 && i % 8 == 0 {
-                writeln!(&mut self.w, "")?;
+                write!(&mut self.w, "\n\t")?;
             }
+
+            write!(&mut self.w, "0x{:02x}, ", b)?;
         }
-        writeln!(&mut self.w, "}};")?;
+        writeln!(&mut self.w, "\n}};")?;
+
+        Ok(())
+    }
+
+    fn output_c_main(&mut self) -> Result<(), Error> {
+        writeln!(
+            &mut self.w,
+            r#"
+int main(int argc, char **argv)
+{{
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = JS_NewRuntime();
+    ctx = JS_NewContextRaw(rt);
+
+    JS_AddIntrinsicBaseObjects(ctx);"#
+        )?;
+
+        for feature in self.features() {
+            writeln!(&mut self.w, "    JS_AddIntrinsic{}(ctx);", feature)?;
+        }
+
+        writeln!(&mut self.w, "\n    js_std_add_helpers(ctx, argc, argv);")?;
+
+        for (module, cname) in &self.static_init_modules {
+            writeln!(
+                &mut self.w,
+                r#"
+    {{
+        extern JSModuleDef *js_init_module_{}(JSContext *ctx, const char *name);
+        js_init_module_{}(ctx, "{}");
+    }}
+"#,
+                cname, cname, module
+            )?;
+        }
+
+        for (cname, &load_only) in &self.cnames {
+            writeln!(
+                &mut self.w,
+                "    js_std_eval_binary(ctx, {}, {}_size, {});",
+                cname,
+                cname,
+                if load_only {
+                    "JS_EVAL_BINARY_LOAD_ONLY"
+                } else {
+                    "0"
+                }
+            )?;
+        }
+
+        writeln!(
+            &mut self.w,
+            r#"
+    js_std_loop(ctx);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    return 0;
+}}
+"#
+        )?;
+        Ok(())
+    }
+
+    fn output_executable(&mut self) -> Result<(), Error> {
+        let out_filename = self.output_filename().to_path_buf();
+        let target = platforms::guess_current().unwrap().target_triple;
+
+        debug!("compile {:?} for `{}` target", out_filename, target);
+
+        if let Output::TempFile(f) = mem::replace(&mut self.w, Output::Stdout) {
+            f.as_file().sync_all()?;
+
+            let path = f.into_temp_path();
+
+            let mut build = cc::Build::new();
+
+            if let Some(ref quickjs_dir) = self.quickjs_dir {
+                build.include(quickjs_dir);
+            }
+
+            build
+                .file(&path)
+                .warnings(false)
+                .extra_warnings(false)
+                .cargo_metadata(false)
+                .out_dir(
+                    out_filename
+                        .parent()
+                        .map_or_else(|| current_dir().unwrap(), |p| p.to_path_buf()),
+                )
+                .target(target)
+                .host(target)
+                .opt_level(3)
+                .compile(&out_filename.to_string_lossy());
+        }
 
         Ok(())
     }
@@ -394,28 +601,39 @@ fn main() -> Result<(), Error> {
 
     gen.output_header()?;
 
+    let output_type = gen.output_type();
+
     let rt = Runtime::new();
     let ctxt = Context::builder(&rt)
         .with_eval()
         .with_regexp_compiler()
         .build();
 
-    let mut loader = Box::pin(Loader::new(gen));
+    let mut loader = Loader::new(gen);
+    {
+        // loader for ES6 modules
+        rt.set_module_loader(None, Some(jsc_module_loader), Some(NonNull::from(&loader)));
 
-    // loader for ES6 modules
-    rt.set_module_loader(None, Some(jsc_module_loader), Some(NonNull::from(&loader)));
+        let files = loader.files.drain(..).collect::<Vec<_>>();
+        let mut cname = loader.cname.take();
+        let module = loader.module;
 
-    let files = loader.files.drain(..).collect::<Vec<_>>();
-    let mut cname = loader.cname.take();
-    let module = loader.module;
+        for filename in files {
+            loader.compile_file(
+                &ctxt,
+                &filename,
+                cname.take(),
+                module || filename.ends_with(".mjs"),
+            )?;
+        }
+    }
 
-    for filename in files {
-        loader.compile_file(
-            &ctxt,
-            &filename,
-            cname.take(),
-            module || filename.ends_with(".mjs"),
-        )?;
+    if output_type != OutputType::C {
+        loader.output_c_main()?;
+    }
+
+    if output_type == OutputType::Executable {
+        loader.output_executable()?;
     }
 
     Ok(())

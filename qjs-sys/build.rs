@@ -106,23 +106,27 @@ fn build_libquickjs() -> Result<(), Error> {
         apply_patch("dump_read_object")?;
     }
 
-    let libquickjs = format!(
+    let quickjs = format!(
         "quickjs{}{}",
         if cfg!(feature = "bignum") { ".bn" } else { "" },
         if cfg!(feature = "lto") { ".lto" } else { "" }
     );
+    let libquickjs = format!("lib{}.a", quickjs);
 
-    if !quickjs_dir.join(format!("lib{}", libquickjs)).is_file() {
-        println!("build quickjs ...");
+    if !quickjs_dir.join(&libquickjs).is_file() {
+        println!("build {} ...", libquickjs);
 
-        Command::new("make").current_dir(&quickjs_dir).output()?;
+        Command::new("make")
+            .arg(libquickjs)
+            .current_dir(&quickjs_dir)
+            .output()?;
     }
 
     println!(
         "cargo:rustc-link-search=native={}",
         quickjs_dir.to_string_lossy()
     );
-    println!("cargo:rustc-link-lib=static={}", libquickjs);
+    println!("cargo:rustc-link-lib=static={}", quickjs);
     println!("cargo:rerun-if-changed={}", QUICKJS_SRC);
 
     Ok(())

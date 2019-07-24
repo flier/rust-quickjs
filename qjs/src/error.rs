@@ -141,11 +141,11 @@ impl<'a> Local<'a, Value> {
         if self.inner.is_exception() {
             let err = self.ctxt.take_exception()?;
 
-            trace!("-> {:?}", err);
+            trace!("-> Err({:?})", err);
 
             Err(err.into())
         } else {
-            trace!("-> {:?}", self.inner);
+            trace!("-> Ok({:?})", self.inner);
 
             Ok(self)
         }
@@ -273,14 +273,14 @@ impl ContextRef {
     pub fn check_null<T>(&self, ptr: Option<NonNull<T>>) -> Result<NonNull<T>, Error> {
         match ptr {
             Some(ptr) => {
-                trace!("-> {:?}", ptr);
+                trace!("-> Ok({:?})", ptr);
 
                 Ok(ptr)
             }
             None => {
                 let err = self.take_exception()?;
 
-                trace!("-> {:?}", err);
+                trace!("-> Err({:?})", err);
 
                 Err(err.into())
             }

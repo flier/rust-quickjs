@@ -33,8 +33,14 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
             match self.tag() {
+                JS_TAG_BIG_INT => f.debug_tuple("BigInt").field(&self.u.ptr).finish(),
+                JS_TAG_BIG_FLOAT => f.debug_tuple("BigFloat").field(&self.u.ptr).finish(),
+                JS_TAG_SYMBOL => f.debug_tuple("Symbol").field(&self.u.ptr).finish(),
+                JS_TAG_STRING => f.debug_tuple("String").field(&self.u.ptr).finish(),
+                JS_TAG_MODULE => f.debug_tuple("Module").field(&self.u.ptr).finish(),
+                JS_TAG_FUNCTION_BYTECODE => f.debug_tuple("Function").field(&self.u.ptr).finish(),
+                JS_TAG_OBJECT => f.debug_tuple("Object").field(&self.u.ptr).finish(),
                 JS_TAG_INT => f.debug_tuple("Value").field(&self.u.int32).finish(),
-                JS_TAG_FLOAT64 => f.debug_tuple("Value").field(&self.u.float64).finish(),
                 JS_TAG_BOOL => f
                     .debug_tuple("Value")
                     .field(&(self.u.int32 != FALSE))
@@ -42,6 +48,9 @@ impl fmt::Debug for Value {
                 JS_TAG_NULL => f.write_str("Null"),
                 JS_TAG_UNDEFINED => f.write_str("Undefined"),
                 JS_TAG_UNINITIALIZED => f.write_str("Uninitialized"),
+                JS_TAG_CATCH_OFFSET => f.debug_tuple("CatchOffset").field(&self.u.int32).finish(),
+                JS_TAG_EXCEPTION => f.write_str("Exception"),
+                JS_TAG_FLOAT64 => f.debug_tuple("Value").field(&self.u.float64).finish(),
                 tag => f.debug_struct("Value").field("tag", &tag).finish(),
             }
         }
