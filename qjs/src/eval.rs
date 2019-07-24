@@ -40,7 +40,7 @@ impl ContextRef {
     ) -> Result<Local<Value>, Error> {
         let input = CString::new(input).context("input")?;
 
-        trace!("eval @ {}: {}", filename, &input.to_string_lossy()[..64]);
+        trace!("eval @ {}: {}", filename, input.to_string_lossy());
 
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;

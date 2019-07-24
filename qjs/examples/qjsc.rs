@@ -130,6 +130,9 @@ impl Opt {
     fn cmodules(&self) -> HashMap<String, String> {
         let mut m = HashMap::new();
 
+        m.insert("std".to_owned(), "std".to_owned());
+        m.insert("os".to_owned(), "os".to_owned());
+
         for s in &self.module_names {
             if let Some(pos) = s.find(',') {
                 let (path, rest) = s.split_at(pos);
@@ -155,6 +158,8 @@ unsafe extern "C" fn jsc_module_loader(
     let ctxt = ContextRef::from_ptr(ctx);
     let module_name = CStr::from_ptr(module_name).to_string_lossy();
     let mut loader = NonNull::new(opaque).expect("loader").cast::<Loader>();
+
+    debug!("load module {}", module_name);
 
     loader
         .as_mut()
@@ -209,6 +214,8 @@ impl Loader {
         cname: Option<String>,
         is_module: bool,
     ) -> Result<(), Error> {
+        debug!("compile file {:?}", filename);
+
         let s = load_file(filename)?;
         let mut eval_flags = Eval::SHEBANG | Eval::COMPILE_ONLY;
 
