@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::ptr::{null_mut, NonNull};
 
 use failure::Error;
-use structopt::StructOpt;
+use structopt::{clap::crate_version, StructOpt};
 
 use foreign_types::ForeignTypeRef;
 use qjs::{ffi, Context, ContextRef, Eval, Runtime, Value, WriteObj};
@@ -594,7 +594,11 @@ int main(int argc, char **argv)
 fn main() -> Result<(), Error> {
     pretty_env_logger::init();
 
-    let opt = Opt::from_args();
+    let opt = Opt::from_clap(
+        &Opt::clap()
+            .version(format!("{} (quickjs {})", crate_version!(), ffi::VERSION.trim()).as_str())
+            .get_matches(),
+    );
     debug!("opts: {:?}", opt);
 
     let mut gen = Generator::new(opt)?;
