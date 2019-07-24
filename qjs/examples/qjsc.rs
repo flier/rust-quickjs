@@ -614,22 +614,21 @@ fn main() -> Result<(), Error> {
         .build();
 
     let mut loader = Loader::new(gen);
-    {
-        // loader for ES6 modules
-        rt.set_module_loader(None, Some(jsc_module_loader), Some(NonNull::from(&loader)));
 
-        let files = loader.files.drain(..).collect::<Vec<_>>();
-        let mut cname = loader.cname.take();
-        let module = loader.module;
+    // loader for ES6 modules
+    rt.set_module_loader(None, Some(jsc_module_loader), Some(NonNull::from(&loader)));
 
-        for filename in files {
-            loader.compile_file(
-                &ctxt,
-                &filename,
-                cname.take(),
-                module || filename.ends_with(".mjs"),
-            )?;
-        }
+    let files = loader.files.drain(..).collect::<Vec<_>>();
+    let mut cname = loader.cname.take();
+    let module = loader.module;
+
+    for filename in files {
+        loader.compile_file(
+            &ctxt,
+            &filename,
+            cname.take(),
+            module || filename.ends_with(".mjs"),
+        )?;
     }
 
     if output_type != OutputType::C {

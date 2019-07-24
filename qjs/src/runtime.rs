@@ -1,6 +1,6 @@
 use std::mem;
 use std::os::raw::{c_int, c_void};
-use std::ptr;
+use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
@@ -9,6 +9,8 @@ use crate::{
     value::{FALSE, TRUE},
     Value,
 };
+
+pub use crate::ffi::JSMallocFunctions as MallocFunctions;
 
 const NO_LIMIT: isize = -1;
 
@@ -36,9 +38,21 @@ impl Runtime {
     /// Construct a new `Runtime`.
     pub fn new() -> Self {
         let runtime = unsafe { Runtime::from_ptr(ffi::JS_NewRuntime()) };
-
         runtime.register_userdata_class();
+        runtime
+    }
 
+    pub fn with_malloc_funcs<T>(
+        malloc_funcs: &MallocFunctions,
+        opaque: Option<NonNull<T>>,
+    ) -> Self {
+        let runtime = unsafe {
+            Runtime::from_ptr(ffi::JS_NewRuntime2(
+                malloc_funcs as *const _,
+                opaque.map_or_else(null_mut, |p| p.cast().as_ptr()),
+            ))
+        };
+        runtime.register_userdata_class();
         runtime
     }
 }
@@ -104,7 +118,7 @@ impl RuntimeRef {
 
                 ffi::JS_SetInterruptHandler(self.as_ptr(), Some(stub), func as *mut _)
             } else {
-                ffi::JS_SetInterruptHandler(self.as_ptr(), None, ptr::null_mut())
+                ffi::JS_SetInterruptHandler(self.as_ptr(), None, null_mut())
             }
         }
     }

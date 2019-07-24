@@ -6,6 +6,11 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["bignum", "lto"]
+bignum = ["qjs-sys/bignum"]
+lto = ["qjs-sys/lto"]
+
 [dependencies]
 log = "0.4"
 failure = "0.1"
@@ -18,7 +23,10 @@ qjs-sys = { version = "0.1", path = "../qjs-sys" }
 
 [dev-dependencies]
 pretty_env_logger = "0.3"
+cfg-if = "0.1"
 structopt = "0.2"
 tempfile = "3.1"
 cc = "1.0"
 platforms = "0.2"
+cfile = "0.5"
+libc = "0.2"
