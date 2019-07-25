@@ -33,9 +33,9 @@ pub struct Opt {
     module: bool,
 
     /// Load the QJSCalc runtime (default if invoked as qjscalc)
-    #[cfg(feature = "bignum")]
-    #[structopt(long)]
-    qjscalc: bool,
+    #[cfg(feature = "qjscalc")]
+    #[structopt(long = "qjscalc")]
+    load_jscalc: bool,
 
     /// Trace memory allocation
     #[structopt(short = "T", long = "trace")]
@@ -205,6 +205,12 @@ fn main() -> Result<(), Error> {
     rt.set_module_loader::<()>(None, Some(jsc_module_loader), None);
 
     if !opt.empty_run {
+        if cfg!(feature = "qjscalc") {
+            if opt.load_jscalc {
+                ctxt.std_eval_binary(&*ffi::QJSCALC, Eval::GLOBAL);
+            }
+        }
+
         ctxt.std_add_helpers(opt.args.clone())?;
 
         // system modules
@@ -258,6 +264,8 @@ std.global.os = os;
             ffi::JS_DumpMemoryUsage(cfile::stdout()?.as_ptr() as *mut _, &stats, rt.as_ptr())
         };
     }
+
+    rt.std_free_handlers();
 
     if opt.empty_run && opt.dump_memory {
         let (d1, d2, d3, d4) = (0..100).fold(
