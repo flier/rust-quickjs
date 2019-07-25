@@ -17,38 +17,38 @@ pub enum ErrorKind {
     Throw(String),
 
     #[fail(display = "Error: {}", _0)]
-    Error(String),
+    Error(String, Option<String>),
 
     #[fail(display = "{}: {}", _0, _1)]
-    Custom(String, String),
+    Custom(String, String, Option<String>),
 
     /// an error that occurs regarding the global function eval().
     #[fail(display = "EvalError: {}", _0)]
-    EvalError(String),
+    EvalError(String, Option<String>),
 
     /// an error that occurs when an internal error in the JavaScript engine is thrown.
     #[fail(display = "InternalError: {}", _0)]
-    InternalError(String),
+    InternalError(String, Option<String>),
 
     /// an error that occurs when a numeric variable or parameter is outside of its valid range.
     #[fail(display = "RangeError: {}", _0)]
-    RangeError(String),
+    RangeError(String, Option<String>),
 
     /// an error that occurs when de-referencing an invalid reference.
     #[fail(display = "ReferenceError: {}", _0)]
-    ReferenceError(String),
+    ReferenceError(String, Option<String>),
 
     /// a syntax error that occurs while parsing code in eval().
     #[fail(display = "SyntaxError: {}", _0)]
-    SyntaxError(String),
+    SyntaxError(String, Option<String>),
 
     /// an error that occurs when a variable or parameter is not of a valid type.
     #[fail(display = "TypeError: {}", _0)]
-    TypeError(String),
+    TypeError(String, Option<String>),
 
     /// an error that occurs when encodeURI() or decodeURI() are passed invalid parameters.
     #[fail(display = "URIError: {}", _0)]
-    URIError(String),
+    URIError(String, Option<String>),
 }
 
 impl TryFrom<Local<'_, Value>> for ErrorKind {
@@ -74,17 +74,22 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 .ok_or_else(|| err_msg("invalid `message` property"))?
                 .to_string_lossy()
                 .to_string();
+            let stack = if let Some(stack) = value.get_property("stack") {
+                stack.to_cstr().map(|s| s.to_string_lossy().to_string())
+            } else {
+                None
+            };
 
             match &*name.to_string_lossy() {
-                "EvalError" => EvalError(msg),
-                "InternalError" => InternalError(msg),
-                "RangeError" => RangeError(msg),
-                "ReferenceError" => ReferenceError(msg),
-                "SyntaxError" => SyntaxError(msg),
-                "TypeError" => TypeError(msg),
-                "URIError" => URIError(msg),
-                "Error" => Error(msg),
-                _ => Custom(name.to_string_lossy().to_string(), msg),
+                "EvalError" => EvalError(msg, stack),
+                "InternalError" => InternalError(msg, stack),
+                "RangeError" => RangeError(msg, stack),
+                "ReferenceError" => ReferenceError(msg, stack),
+                "SyntaxError" => SyntaxError(msg, stack),
+                "TypeError" => TypeError(msg, stack),
+                "URIError" => URIError(msg, stack),
+                "Error" => Error(msg, stack),
+                _ => Custom(name.to_string_lossy().to_string(), msg, stack),
             }
         } else {
             let msg = value
@@ -121,15 +126,15 @@ impl NewValue for ErrorKind {
 
         match self {
             Throw(msg) => ctxt.throw(msg),
-            Error(msg) => ctxt.throw_error(msg),
-            Custom(name, msg) => ctxt.throw_custom_error(&name, msg),
-            EvalError(msg) => ctxt.throw_custom_error("EvalError", msg),
-            InternalError(msg) => ctxt.throw_internal_error(msg),
-            RangeError(msg) => ctxt.throw_range_error(msg),
-            ReferenceError(msg) => ctxt.throw_reference_error(msg),
-            SyntaxError(msg) => ctxt.throw_syntax_error(msg),
-            TypeError(msg) => ctxt.throw_type_error(msg),
-            URIError(msg) => ctxt.throw_custom_error("URIError", msg),
+            Error(msg, stack) => ctxt.throw_error(msg, stack),
+            Custom(name, msg, stack) => ctxt.throw_custom_error(&name, msg, stack),
+            EvalError(msg, stack) => ctxt.throw_custom_error("EvalError", msg, stack),
+            InternalError(msg, _) => ctxt.throw_internal_error(msg),
+            RangeError(msg, _) => ctxt.throw_range_error(msg),
+            ReferenceError(msg, _) => ctxt.throw_reference_error(msg),
+            SyntaxError(msg, _) => ctxt.throw_syntax_error(msg),
+            TypeError(msg, _) => ctxt.throw_type_error(msg),
+            URIError(msg, stack) => ctxt.throw_custom_error("URIError", msg, stack),
         }
         .into_inner()
         .raw()
@@ -178,7 +183,7 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_NewError(self.as_ptr()) })
     }
 
-    pub fn throw_error<T: ToString>(&self, msg: T) -> Local<Value> {
+    pub fn throw_error<T: ToString>(&self, msg: T, stack: Option<String>) -> Local<Value> {
         let err = self.new_error();
 
         err.define_property_value(
@@ -188,6 +193,11 @@ impl ContextRef {
         )
         .expect("message");
 
+        if let Some(stack) = stack {
+            err.define_property_value("stack", stack, Prop::WRITABLE | Prop::CONFIGURABLE)
+                .expect("stack");
+        }
+
         self.throw(err)
     }
 
@@ -195,14 +205,30 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
     }
 
-    pub fn throw_custom_error<T: ToString>(&self, name: &str, msg: T) -> Local<Value> {
+    pub fn throw_custom_error<T: ToString>(
+        &self,
+        name: &str,
+        msg: T,
+        stack: Option<String>,
+    ) -> Local<Value> {
         if let Some(ctor) = self.global_object().get_property(name) {
             match ctor.call_constructor(msg.to_string()) {
-                Ok(err) => self.throw(err),
-                Err(err) => self.throw_error(err),
+                Ok(err) => {
+                    if let Some(stack) = stack {
+                        err.define_property_value(
+                            "stack",
+                            stack,
+                            Prop::WRITABLE | Prop::CONFIGURABLE,
+                        )
+                        .expect("stack");
+                    }
+
+                    self.throw(err)
+                }
+                Err(err) => self.throw_error(err, stack),
             }
         } else {
-            self.throw_error(format!("class `{}` not found", name))
+            self.throw_error(format!("class `{}` not found", name), None)
         }
     }
 
@@ -322,7 +348,10 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &ReferenceError("foobar is not defined".into())
+            &ReferenceError(
+                "foobar is not defined".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
 
         assert_eq!(
@@ -331,7 +360,7 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &SyntaxError("foobar is not defined".into())
+            &SyntaxError("foobar is not defined".into(), None)
         );
 
         assert_eq!(
@@ -340,16 +369,23 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &InternalError("out of memory".into())
+            &InternalError("out of memory".into(), None)
         );
 
         assert_eq!(
-            ctxt.throw_custom_error("URIError", "malformed URI sequence")
-                .ok()
-                .unwrap_err()
-                .downcast_ref::<ErrorKind>()
-                .unwrap(),
-            &URIError("malformed URI sequence".into())
+            ctxt.throw_custom_error(
+                "URIError",
+                "malformed URI sequence",
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
+            .ok()
+            .unwrap_err()
+            .downcast_ref::<ErrorKind>()
+            .unwrap(),
+            &URIError(
+                "malformed URI sequence".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
     }
 
@@ -365,16 +401,22 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &Error("Whoops!".into())
+            &Error(
+                "Whoops!".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
 
         assert_eq!(
-            ctxt.throw_error("Whoops!")
+            ctxt.throw_error("Whoops!", Some("    at <eval> (<evalScript>)\n".into()))
                 .ok()
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &Error("Whoops!".into())
+            &Error(
+                "Whoops!".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
     }
 
@@ -409,7 +451,11 @@ class CustomError extends Error {
             .unwrap_err()
             .downcast_ref::<ErrorKind>()
             .unwrap(),
-            &Custom("CustomError".into(), "Whoops!".into())
+            &Custom(
+                "CustomError".into(),
+                "Whoops!".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            ),
         );
 
         // assert_eq!(

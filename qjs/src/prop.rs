@@ -528,7 +528,7 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<ErrorKind>()
                 .unwrap(),
-            &ErrorKind::TypeError("object is not extensible".into())
+            &ErrorKind::TypeError("object is not extensible".into(), None)
         );
     }
 }
