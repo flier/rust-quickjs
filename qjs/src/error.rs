@@ -228,7 +228,7 @@ impl ContextRef {
                 Err(err) => self.throw_error(err, stack),
             }
         } else {
-            self.throw_error(format!("class `{}` not found", name), None)
+            self.throw_error(format!("class `{}` not found", name), stack)
         }
     }
 
@@ -459,12 +459,12 @@ class CustomError extends Error {
         );
 
         // assert_eq!(
-        //     ctxt.throw_custom_error("CustomError", "Whoops!")
+        //     ctxt.throw_custom_error("CustomError", "Whoops!", None)
         //         .ok()
         //         .unwrap_err()
         //         .downcast_ref::<ErrorKind>()
         //         .unwrap(),
-        //     &Custom("CustomError".into(), "Whoops!".into())
+        //     &Custom("CustomError".into(), "Whoops!".into(), None)
         // );
     }
 
