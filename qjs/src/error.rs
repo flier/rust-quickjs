@@ -270,8 +270,8 @@ impl ContextRef {
         }
     }
 
-    pub fn check_null<T>(&self, ptr: Option<NonNull<T>>) -> Result<NonNull<T>, Error> {
-        match ptr {
+    pub fn check_null<T>(&self, ptr: *mut T) -> Result<NonNull<T>, Error> {
+        match NonNull::new(ptr) {
             Some(ptr) => {
                 trace!("-> Ok({:?})", ptr);
 

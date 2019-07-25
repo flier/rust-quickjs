@@ -1,4 +1,7 @@
 use std::ffi::CString;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
@@ -55,6 +58,22 @@ impl ContextRef {
             )
         })
         .ok()
+    }
+
+    pub fn eval_file<P: AsRef<Path>>(&self, path: P, flags: Eval) -> Result<Local<Value>, Error> {
+        let filename = path.as_ref().to_string_lossy().to_string();
+
+        self.load_file(path)
+            .and_then(|s| self.eval(s, &filename, flags))
+    }
+
+    pub fn load_file<P: AsRef<Path>>(&self, path: P) -> Result<String, Error> {
+        let mut f = File::open(path)?;
+        let mut s = String::new();
+
+        f.read_to_string(&mut s)?;
+
+        Ok(s)
     }
 
     pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Result<Local<Value>, Error> {

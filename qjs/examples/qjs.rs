@@ -3,24 +3,26 @@ extern crate log;
 #[macro_use]
 extern crate cfg_if;
 
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::mem;
 use std::os::raw::{c_char, c_void};
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
 
 use failure::Error;
 use foreign_types::ForeignTypeRef;
-use structopt::{clap::crate_version, StructOpt};
+use structopt::StructOpt;
 
-use qjs::{ffi, Context, ContextRef, MallocFunctions, Runtime};
+use qjs::{ffi, Context, ContextRef, Eval, MallocFunctions, Runtime};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "qjs", about = "QuickJS stand alone interpreter")]
 pub struct Opt {
     /// Evaluate EXPR
-    #[structopt(name = "EXPR", long = "eval")]
-    eval: Option<String>,
+    #[structopt(name = "EXPR", short = "e", long = "eval")]
+    expr: Option<String>,
 
     /// Go to interactive mode
     #[structopt(short, long)]
@@ -50,6 +52,9 @@ pub struct Opt {
     /// Make 'std' and 'os' invisible to non module code
     #[structopt(long = "nostd")]
     no_std: bool,
+
+    /// Script arguments
+    args: Vec<String>,
 }
 
 cfg_if! {
@@ -68,7 +73,12 @@ unsafe extern "C" fn js_trace_malloc(s: *mut ffi::JSMallocState, size: usize) ->
     } else {
         let ptr = libc::malloc(size);
 
-        trace!("A {} -> {:p}", size, ptr);
+        trace!(
+            "A {} -> {:p}.{}",
+            size,
+            ptr,
+            js_trace_malloc_usable_size(ptr)
+        );
 
         if !ptr.is_null() {
             s.malloc_count += 1;
@@ -81,7 +91,7 @@ unsafe extern "C" fn js_trace_malloc(s: *mut ffi::JSMallocState, size: usize) ->
 
 unsafe extern "C" fn js_trace_free(s: *mut ffi::JSMallocState, ptr: *mut c_void) {
     if !ptr.is_null() {
-        trace!("F {:p}", ptr);
+        trace!("F {:p}.{}", ptr, js_trace_malloc_usable_size(ptr));
 
         let s = s.as_mut().expect("state");
 
@@ -108,7 +118,7 @@ unsafe extern "C" fn js_trace_realloc(
         let old_size = js_trace_malloc_usable_size(ptr);
 
         if size == 0 {
-            trace!("R {} {:p}", size, ptr);
+            trace!("R {} {:p}.{}", size, ptr, js_trace_malloc_usable_size(ptr));
 
             s.malloc_count -= 1;
             s.malloc_size -= old_size + MALLOC_OVERHEAD;
@@ -119,14 +129,15 @@ unsafe extern "C" fn js_trace_realloc(
         } else if s.malloc_size + size - old_size > s.malloc_limit {
             null_mut()
         } else {
-            trace!("R {} {:p}", size, ptr);
+            trace!("R {} {:p}.{}", size, ptr, js_trace_malloc_usable_size(ptr));
 
             let ptr = libc::realloc(ptr, size);
 
-            trace!(" -> {:p}", ptr);
+            trace!(" -> {:p}.{}", ptr, js_trace_malloc_usable_size(ptr));
 
             if !ptr.is_null() {
-                s.malloc_size += js_trace_malloc_usable_size(ptr) - old_size;
+                s.malloc_size += js_trace_malloc_usable_size(ptr);
+                s.malloc_size -= old_size;
             }
 
             ptr
@@ -155,12 +166,14 @@ cfg_if! {
 unsafe extern "C" fn jsc_module_loader(
     ctx: *mut ffi::JSContext,
     module_name: *const c_char,
-    opaque: *mut c_void,
+    _opaque: *mut c_void,
 ) -> *mut ffi::JSModuleDef {
     let ctxt = ContextRef::from_ptr(ctx);
-    let module_name = CStr::from_ptr(module_name).to_string_lossy();
+    let module_name = Path::new(OsStr::from_bytes(CStr::from_ptr(module_name).to_bytes()));
 
-    null_mut()
+    ctxt.eval_file(module_name, Eval::MODULE | Eval::COMPILE_ONLY)
+        .ok()
+        .map_or_else(null_mut, |func| func.as_ptr().as_ptr())
 }
 
 fn main() -> Result<(), Error> {
@@ -168,7 +181,7 @@ fn main() -> Result<(), Error> {
 
     let opt = Opt::from_clap(
         &Opt::clap()
-            .version(format!("{} (quickjs {})", crate_version!(), ffi::VERSION.trim()).as_str())
+            .version(qjs::LONG_VERSION.as_str())
             .get_matches(),
     );
     debug!("opts: {:?}", opt);
@@ -191,7 +204,52 @@ fn main() -> Result<(), Error> {
     // loader for ES6 modules
     rt.set_module_loader::<()>(None, Some(jsc_module_loader), None);
 
-    if !opt.empty_run {}
+    if !opt.empty_run {
+        ctxt.std_add_helpers(opt.args.clone())?;
+
+        // system modules
+        ctxt.init_module_std()?;
+        ctxt.init_module_os()?;
+
+        if !opt.no_std {
+            // make 'std' and 'os' visible to non module code
+            ctxt.eval(
+                r#"
+import * as std from 'std';
+import * as os from 'os';
+
+std.global.std = std;
+std.global.os = os;
+"#,
+                "<input>",
+                Eval::MODULE,
+            )?;
+        }
+
+        let mut interactive = opt.interactive;
+
+        if let Some(expr) = opt.expr {
+            ctxt.eval(expr, "<cmdline>", Eval::GLOBAL)?;
+        } else if let Some(filename) = opt.args.first() {
+            ctxt.eval_file(
+                Path::new(filename),
+                Eval::SHEBANG
+                    | if opt.module || filename.ends_with(".mjs") {
+                        Eval::MODULE
+                    } else {
+                        Eval::GLOBAL
+                    },
+            )?;
+        } else {
+            interactive = true;
+        }
+
+        if interactive {
+            ctxt.std_eval_binary(&*ffi::REPL, Eval::GLOBAL);
+        }
+
+        ctxt.std_loop();
+    }
 
     if opt.dump_memory {
         let stats = rt.memory_usage();

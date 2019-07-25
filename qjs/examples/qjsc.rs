@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::ptr::{null_mut, NonNull};
 
 use failure::Error;
-use structopt::{clap::crate_version, StructOpt};
+use structopt::StructOpt;
 
 use foreign_types::ForeignTypeRef;
 use qjs::{ffi, Context, ContextRef, Eval, Runtime, Value, WriteObj};
@@ -281,16 +281,16 @@ impl Loader {
     ) -> Result<(), Error> {
         debug!("compile file {:?}", filename);
 
-        let s = load_file(filename)?;
-        let mut eval_flags = Eval::SHEBANG | Eval::COMPILE_ONLY;
-
-        if is_module {
-            eval_flags |= Eval::MODULE;
-        } else {
-            eval_flags |= Eval::GLOBAL;
-        }
-
-        let func = ctxt.eval(s, &filename.to_string_lossy(), eval_flags)?;
+        let func = ctxt.eval_file(
+            filename,
+            Eval::SHEBANG
+                | Eval::COMPILE_ONLY
+                | if is_module {
+                    Eval::MODULE
+                } else {
+                    Eval::GLOBAL
+                },
+        )?;
 
         let cname = cname
             .as_ref()
@@ -318,48 +318,37 @@ impl Loader {
 
             // create a dummy module
             ctxt.new_c_module(module_name, Some(js_module_dummy_init))
+                .ok()
         } else if module_name.ends_with(".so") || module_name.ends_with(".dylib") {
             warn!("binary module '{}' is not compiled", module_name);
 
             // create a dummy module
             ctxt.new_c_module(module_name, Some(js_module_dummy_init))
+                .ok()
         } else {
-            match load_file(module_name) {
-                Ok(s) => {
-                    // compile the module
-                    ctxt.eval(s, module_name, Eval::MODULE | Eval::COMPILE_ONLY)
-                        .and_then(|func| {
-                            let cname = get_c_name(module_name).expect("cname");
+            // compile the module
+            ctxt.eval_file(module_name, Eval::MODULE | Eval::COMPILE_ONLY)
+                .and_then(|func| {
+                    let cname = get_c_name(module_name).expect("cname");
 
-                            self.cnames.insert(cname.to_string(), true);
+                    self.cnames.insert(cname.to_string(), true);
 
-                            self.output_object_code(ctxt, &func, &cname)?;
+                    self.output_object_code(ctxt, &func, &cname)?;
 
-                            Ok(func)
-                        })
-                        .ok()
-                        .map(|func| func.as_ptr())
-                }
-                Err(err) => {
+                    Ok(func)
+                })
+                .map_err(|err| {
                     ctxt.throw_reference_error(format!(
                         "could not load module filename `{}`, {}",
                         module_name, err
                     ));
 
-                    None
-                }
-            }
+                    err
+                })
+                .ok()
+                .map(|func| func.as_ptr())
         }
     }
-}
-
-fn load_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    let mut f = File::open(path)?;
-    let mut s = String::new();
-
-    f.read_to_string(&mut s)?;
-
-    Ok(s)
 }
 
 fn get_c_name<S: AsRef<OsStr> + ?Sized>(s: &S) -> Option<&str> {
@@ -596,7 +585,7 @@ fn main() -> Result<(), Error> {
 
     let opt = Opt::from_clap(
         &Opt::clap()
-            .version(format!("{} (quickjs {})", crate_version!(), ffi::VERSION.trim()).as_str())
+            .version(qjs::LONG_VERSION.as_str())
             .get_matches(),
     );
     debug!("opts: {:?}", opt);

@@ -1,13 +1,14 @@
 use std::ffi::CString;
 use std::ptr::{null_mut, NonNull};
 
+use failure::Error;
 use foreign_types::ForeignTypeRef;
 
 use crate::{ffi, ContextRef, RuntimeRef};
 
 pub use crate::ffi::{
-    JSModuleInitFunc as ModuleInitFunc, JSModuleLoaderFunc as ModuleLoaderFunc,
-    JSModuleNormalizeFunc as ModuleNormalizeFunc,
+    JSModuleDef as ModuleDef, JSModuleInitFunc as ModuleInitFunc,
+    JSModuleLoaderFunc as ModuleLoaderFunc, JSModuleNormalizeFunc as ModuleNormalizeFunc,
 };
 
 impl RuntimeRef {
@@ -33,8 +34,8 @@ impl ContextRef {
         &self,
         name: T,
         init: ModuleInitFunc,
-    ) -> Option<NonNull<ffi::JSModuleDef>> {
-        NonNull::new(unsafe {
+    ) -> Result<NonNull<ffi::JSModuleDef>, Error> {
+        self.check_null(unsafe {
             ffi::JS_NewCModule(
                 self.as_ptr(),
                 CString::new(name).expect("name").as_ptr(),

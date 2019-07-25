@@ -7,9 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["bignum", "lto"]
+default = ["bignum", "repl", "qjscalc", "lto", "stdlib"]
 bignum = ["qjs-sys/bignum"]
+repl = ["qjs-sys/repl"]
+qjscalc = ["qjs-sys/qjscalc"]
 lto = ["qjs-sys/lto"]
+stdlib = []
 
 [dependencies]
 log = "0.4"

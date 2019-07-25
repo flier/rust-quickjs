@@ -29,6 +29,8 @@ mod module;
 mod precompile;
 mod prop;
 mod runtime;
+#[cfg(feature = "stdlib")]
+mod stdlib;
 mod userdata;
 mod value;
 
@@ -43,6 +45,7 @@ pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
 pub use job::JobFunc;
+pub use module::{ModuleDef, ModuleInitFunc, ModuleLoaderFunc, ModuleNormalizeFunc};
 pub use precompile::{ReadObj, WriteObj};
 pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, GetProperty, HasProperty, Prop,
@@ -50,3 +53,18 @@ pub use prop::{
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, Runtime, RuntimeRef};
 pub use value::{NewValue, Value};
+
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+lazy_static! {
+    pub static ref LONG_VERSION: String = format!(
+        "{} (quickjs {}{})",
+        VERSION,
+        ffi::VERSION.trim(),
+        if cfg!(feature = "bignum") {
+            " with BigNum"
+        } else {
+            ""
+        },
+    );
+}

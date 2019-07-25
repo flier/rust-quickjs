@@ -4,6 +4,8 @@
 
 #[macro_use]
 extern crate cfg_if;
+#[macro_use]
+extern crate lazy_static;
 
 cfg_if! {
     if #[cfg(feature = "gen")] {
@@ -13,7 +15,46 @@ cfg_if! {
     }
 }
 
-pub const VERSION: &str = include_str!(concat!(env!("OUT_DIR"), "/quickjs/VERSION"));
+lazy_static! {
+    pub static ref VERSION: &'static str =
+        include_str!(concat!(env!("OUT_DIR"), "/quickjs/VERSION")).trim();
+}
+
+cfg_if! {
+    if #[cfg(feature = "repl")] {
+        extern "C" {
+            #[no_mangle]
+            pub static repl: *const u8;
+
+            #[no_mangle]
+            pub static repl_size: u32;
+        }
+
+        lazy_static! {
+            pub static ref REPL: &'static [u8] = unsafe {
+                std::slice::from_raw_parts(repl, repl_size as usize)
+            };
+        }
+    }
+}
+
+cfg_if! {
+    if #[cfg(feature = "qjscalc")] {
+        extern "C" {
+            #[no_mangle]
+            pub static qjscalc: *const u8;
+
+            #[no_mangle]
+            pub static qjscalc_size: u32;
+        }
+
+        lazy_static! {
+            pub static ref QJSCALC: &'static [u8] = unsafe {
+                std::slice::from_raw_parts(qjscalc, qjscalc_size as usize)
+            };
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -106,6 +106,13 @@ fn build_libquickjs() -> Result<(), Error> {
         apply_patch("dump_read_object")?;
     }
 
+    let repl_c = if cfg!(feature = "bignum") {
+        "repl-bn.c"
+    } else {
+        "repl.c"
+    };
+    let qjscalc_c = "qjscalc.c";
+
     let quickjs = format!(
         "quickjs{}{}",
         if cfg!(feature = "bignum") { ".bn" } else { "" },
@@ -114,10 +121,20 @@ fn build_libquickjs() -> Result<(), Error> {
     let libquickjs = format!("lib{}.a", quickjs);
 
     if !quickjs_dir.join(&libquickjs).is_file() {
-        println!("build {} ...", libquickjs);
+        let mut args = vec![libquickjs];
+
+        if cfg!(feature = "repl") {
+            args.push(repl_c.to_owned());
+        }
+
+        if cfg!(feature = "qjscalc") {
+            args.push(qjscalc_c.to_owned());
+        }
+
+        println!("make {:?} ...", args);
 
         Command::new("make")
-            .arg(libquickjs)
+            .args(args)
             .current_dir(&quickjs_dir)
             .output()?;
     }
@@ -128,6 +145,18 @@ fn build_libquickjs() -> Result<(), Error> {
     );
     println!("cargo:rustc-link-lib=static={}", quickjs);
     println!("cargo:rerun-if-changed={}", QUICKJS_SRC);
+
+    if cfg!(feature = "repl") {
+        cc::Build::new()
+            .file(quickjs_dir.join(repl_c))
+            .compile("repl");
+    }
+
+    if cfg!(feature = "qjscalc") {
+        cc::Build::new()
+            .file(quickjs_dir.join(qjscalc_c))
+            .compile("qjscalc");
+    }
 
     Ok(())
 }

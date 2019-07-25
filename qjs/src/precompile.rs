@@ -1,4 +1,3 @@
-use std::ptr::NonNull;
 use std::slice;
 
 use failure::Error;
@@ -34,9 +33,9 @@ impl ContextRef {
     pub fn write_object(&self, obj: &Value, flags: WriteObj) -> Result<Vec<u8>, Error> {
         let mut len = 0;
 
-        self.check_null(NonNull::new(unsafe {
+        self.check_null(unsafe {
             ffi::JS_WriteObject(self.as_ptr(), &mut len, obj.raw(), flags.bits as i32)
-        }))
+        })
         .map(|buf| unsafe {
             let data = slice::from_raw_parts(buf.cast().as_ptr(), len).to_vec();
 
