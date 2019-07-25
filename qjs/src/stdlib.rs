@@ -16,7 +16,7 @@ impl ContextRef {
     pub fn init_module_os(&self) -> Result<NonNull<ModuleDef>, Error> {
         debug!("init `os` module");
 
-        self.check_null(unsafe { ffi::js_init_module_std(self.as_ptr(), cstr!(os).as_ptr()) })
+        self.check_null(unsafe { ffi::js_init_module_os(self.as_ptr(), cstr!(os).as_ptr()) })
     }
 
     pub fn std_add_helpers<I: IntoIterator<Item = S>, S: Into<Vec<u8>>>(
