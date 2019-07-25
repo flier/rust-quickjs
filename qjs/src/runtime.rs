@@ -10,7 +10,7 @@ use crate::{
     Value,
 };
 
-pub use crate::ffi::JSMallocFunctions as MallocFunctions;
+pub use crate::ffi::{JSMallocFunctions as MallocFunctions, JSMemoryUsage as MemoryUsage};
 
 const NO_LIMIT: isize = -1;
 
@@ -42,6 +42,7 @@ impl Runtime {
         runtime
     }
 
+    /// Construct a new `Runtime` with custom memory allocation functions.
     pub fn with_malloc_funcs<T>(
         malloc_funcs: &MallocFunctions,
         opaque: Option<NonNull<T>>,
@@ -93,7 +94,8 @@ impl RuntimeRef {
         unsafe { ffi::JS_IsInGCSweep(self.as_ptr()) != FALSE }
     }
 
-    pub fn memory_usage(&self) -> ffi::JSMemoryUsage {
+    /// Compute memory used by various object types.
+    pub fn memory_usage(&self) -> MemoryUsage {
         unsafe {
             let mut usage: ffi::JSMemoryUsage = mem::zeroed();
 
@@ -103,6 +105,9 @@ impl RuntimeRef {
         }
     }
 
+    /// Set a callback which is regularly called by the engine when it is executing code.
+    ///
+    /// This callback can be used to implement an execution timeout.
     pub fn set_interrupt_handler(&self, handler: InterruptHandler) {
         unsafe {
             if let Some(func) = handler {
@@ -124,8 +129,11 @@ impl RuntimeRef {
     }
 }
 
+/// Interrupt the execution code.
 pub enum Interrupt {
+    /// This execution was interrupted.
     Break,
+    /// Continue the execution code.
     Continue,
 }
 pub type InterruptHandler = Option<fn(rt: &RuntimeRef) -> Interrupt>;

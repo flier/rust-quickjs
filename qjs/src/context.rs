@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
@@ -22,14 +21,6 @@ impl_foreign_type!(Context, ContextRef);
 
 pub struct Builder(Context);
 
-impl Deref for Builder {
-    type Target = ContextRef;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl Context {
     pub fn new(runtime: &RuntimeRef) -> Context {
         unsafe { Context::from_ptr(ffi::JS_NewContext(runtime.as_ptr())) }
@@ -42,57 +33,57 @@ impl Context {
 
 impl Builder {
     pub fn with_base_objects(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicBaseObjects(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicBaseObjects(self.0.as_ptr()) };
         self
     }
 
     pub fn with_date(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicDate(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicDate(self.0.as_ptr()) };
         self
     }
 
     pub fn with_eval(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicEval(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicEval(self.0.as_ptr()) };
         self
     }
 
     pub fn with_string_normalize(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicStringNormalize(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicStringNormalize(self.0.as_ptr()) };
         self
     }
 
     pub fn with_regexp_compiler(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicRegExpCompiler(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicRegExpCompiler(self.0.as_ptr()) };
         self
     }
 
     pub fn with_regexp(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicRegExp(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicRegExp(self.0.as_ptr()) };
         self
     }
 
     pub fn with_json(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicJSON(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicJSON(self.0.as_ptr()) };
         self
     }
 
     pub fn with_proxy(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicProxy(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicProxy(self.0.as_ptr()) };
         self
     }
 
     pub fn with_map(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicMapSet(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicMapSet(self.0.as_ptr()) };
         self
     }
 
     pub fn with_typedarray(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicTypedArrays(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicTypedArrays(self.0.as_ptr()) };
         self
     }
 
     pub fn with_promise(self) -> Self {
-        unsafe { ffi::JS_AddIntrinsicPromise(self.as_ptr()) };
+        unsafe { ffi::JS_AddIntrinsicPromise(self.0.as_ptr()) };
         self
     }
 
@@ -122,6 +113,7 @@ impl ContextRef {
         self
     }
 
+    /// Set the maximum system stack size.
     pub fn set_max_stack_size(&self, stack_size: usize) -> &Self {
         trace!("{:?} set stack size to {:?}", self, stack_size);
 

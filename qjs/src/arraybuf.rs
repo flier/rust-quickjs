@@ -1,6 +1,6 @@
 use std::ops::Deref;
 use std::ptr;
-use std::slice;
+use std::slice::{self, SliceIndex};
 
 use foreign_types::ForeignTypeRef;
 
@@ -10,10 +10,13 @@ use crate::{
     ContextRef, Local, Value,
 };
 
+/// `ArrayBuffer` represent a generic, fixed-length raw binary data buffer.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ArrayBuffer<'a>(Local<'a, Value>);
 
+/// `SharedArrayBuffer` represent a generic, fixed-length raw binary data buffer,
+/// similar to the ArrayBuffer object, but in a way that they can be used to create views on shared memory.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SharedArrayBuffer<'a>(Local<'a, Value>);
@@ -55,14 +58,23 @@ impl<'a> AsMut<[u8]> for ArrayBuffer<'a> {
 }
 
 impl<'a> ArrayBuffer<'a> {
-    pub fn slice(&self, begin: usize, end: usize) -> &[u8] {
-        &self.as_ref()[begin..end]
+    /// Returns a reference to an element or subslice depending on the type of index.
+    pub fn get<I>(&self, index: I) -> Option<&<I as SliceIndex<[u8]>>::Output>
+    where
+        I: SliceIndex<[u8]>,
+    {
+        self.as_ref().get(index)
     }
 
-    pub fn slice_mut(&mut self, begin: usize, end: usize) -> &mut [u8] {
-        &mut self.as_mut()[begin..end]
+    /// Returns a mutable reference to an element or subslice depending on the type of index (see get) or None if the index is out of bounds.
+    pub fn get_mut<I>(&mut self, index: I) -> Option<&mut <I as SliceIndex<[u8]>>::Output>
+    where
+        I: SliceIndex<[u8]>,
+    {
+        self.as_mut().get_mut(index)
     }
 
+    /// Detach the buffer and the underlying memory is released.
     pub fn detach(&self) {
         unsafe { ffi::JS_DetachArrayBuffer(self.ctxt.as_ptr(), self.raw()) }
     }
@@ -103,16 +115,25 @@ impl<'a> AsMut<[u8]> for SharedArrayBuffer<'a> {
 }
 
 impl<'a> SharedArrayBuffer<'a> {
-    pub fn slice(&self, begin: usize, end: usize) -> &[u8] {
-        &self.as_ref()[begin..end]
+    /// Returns a reference to an element or subslice depending on the type of index.
+    pub fn get<I>(&self, index: I) -> Option<&<I as SliceIndex<[u8]>>::Output>
+    where
+        I: SliceIndex<[u8]>,
+    {
+        self.as_ref().get(index)
     }
 
-    pub fn slice_mut(&mut self, begin: usize, end: usize) -> &mut [u8] {
-        &mut self.as_mut()[begin..end]
+    /// Returns a mutable reference to an element or subslice depending on the type of index (see get) or None if the index is out of bounds.
+    pub fn get_mut<I>(&mut self, index: I) -> Option<&mut <I as SliceIndex<[u8]>>::Output>
+    where
+        I: SliceIndex<[u8]>,
+    {
+        self.as_mut().get_mut(index)
     }
 }
 
 impl ContextRef {
+    /// Creates a new `ArrayBuffer` of the given bytes.
     pub fn new_array_buffer<T: AsMut<[u8]>>(&self, buf: &mut T) -> ArrayBuffer {
         let buf = buf.as_mut();
 
@@ -128,6 +149,7 @@ impl ContextRef {
         }))
     }
 
+    /// Creates a new `SharedArrayBuffer` of the given bytes.
     pub fn new_shared_array_buffer<T: Into<Vec<u8>>>(&self, buf: T) -> SharedArrayBuffer {
         let mut buf = Box::new(buf.into());
         let data = buf.as_mut_ptr();
@@ -145,6 +167,7 @@ impl ContextRef {
         }))
     }
 
+    /// Creates a new `ArrayBuffer` which copy the given bytes.
     pub fn new_array_buffer_copy(&self, buf: &mut [u8]) -> ArrayBuffer {
         ArrayBuffer(self.bind(unsafe {
             ffi::JS_NewArrayBufferCopy(self.as_ptr(), buf.as_mut_ptr(), buf.len())

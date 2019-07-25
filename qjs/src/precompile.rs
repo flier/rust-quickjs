@@ -30,6 +30,7 @@ impl Local<'_, Value> {
 }
 
 impl ContextRef {
+    /// Write the script or module to bytecode
     pub fn write_object(&self, obj: &Value, flags: WriteObj) -> Result<Vec<u8>, Error> {
         let mut len = 0;
 
@@ -45,6 +46,7 @@ impl ContextRef {
         })
     }
 
+    /// Read the script or module from bytecode
     pub fn read_object(&self, buf: &[u8], flags: ReadObj) -> Result<Local<Value>, Error> {
         self.bind(unsafe {
             ffi::JS_ReadObject(
@@ -57,6 +59,7 @@ impl ContextRef {
         .ok()
     }
 
+    /// Evaluate a script or module source in bytecode.
     pub fn eval_function<T: Into<ffi::JSValue>>(
         &self,
         func: T,

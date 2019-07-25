@@ -9,6 +9,7 @@ use foreign_types::ForeignTypeRef;
 use crate::{ffi, ContextRef, Local, Value};
 
 bitflags! {
+    /// Flags for `eval` method.
     pub struct Eval: u32 {
         /// global code (default)
         const GLOBAL = ffi::JS_EVAL_TYPE_GLOBAL;
@@ -18,8 +19,6 @@ bitflags! {
         const DIRECT = ffi::JS_EVAL_TYPE_DIRECT;
         /// indirect call (internal use)
         const INDIRECT = ffi::JS_EVAL_TYPE_INDIRECT;
-
-        const TYPE_MASK = ffi::JS_EVAL_TYPE_MASK;
 
         /// skip first line beginning with '#!'
         const SHEBANG = ffi::JS_EVAL_FLAG_SHEBANG;
@@ -33,12 +32,14 @@ bitflags! {
 }
 
 bitflags! {
+    /// Flags for `eval_binary` method.
     pub struct EvalBinary: u32 {
         const LOAD_ONLY = ffi::JS_EVAL_BINARY_LOAD_ONLY;
     }
 }
 
 impl ContextRef {
+    /// Evaluate a script or module source.
     pub fn eval<T: Into<Vec<u8>>>(
         &self,
         input: T,
@@ -69,6 +70,7 @@ impl ContextRef {
         .ok()
     }
 
+    /// Evaluate a script or module source in file.
     pub fn eval_file<P: AsRef<Path>>(&self, path: P, flags: Eval) -> Result<Local<Value>, Error> {
         let filename = path.as_ref().to_string_lossy().to_string();
 
@@ -76,7 +78,7 @@ impl ContextRef {
             .and_then(|s| self.eval(s, &filename, flags))
     }
 
-    pub fn load_file<P: AsRef<Path>>(&self, path: P) -> Result<String, Error> {
+    fn load_file<P: AsRef<Path>>(&self, path: P) -> Result<String, Error> {
         let mut f = File::open(path)?;
         let mut s = String::new();
 
@@ -85,6 +87,7 @@ impl ContextRef {
         Ok(s)
     }
 
+    /// Evaluate a script or module source in bytecode.
     pub fn eval_binary(&self, buf: &[u8], flags: EvalBinary) -> Result<Local<Value>, Error> {
         trace!("eval {} bytes binary {:?}", buf.len(), flags,);
 
@@ -94,6 +97,7 @@ impl ContextRef {
         .ok()
     }
 
+    /// Parse JSON expression.
     pub fn parse_json<T: Into<Vec<u8>>>(
         &self,
         input: T,

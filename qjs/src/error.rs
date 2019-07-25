@@ -11,6 +11,7 @@ use crate::{
     ContextRef, Local, NewValue, Prop, Value,
 };
 
+/// Javascript error.
 #[derive(Debug, Clone, Fail, PartialEq)]
 pub enum ErrorKind {
     #[fail(display = "Throw: {}", _0)]
@@ -143,13 +144,10 @@ impl NewValue for Result<Local<'_, Value>, Error> {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         match self {
             Ok(v) => v,
-            Err(err) => {
-                if let Some(err) = err.downcast_ref::<ErrorKind>() {
-                    ctxt.throw(err)
-                } else {
-                    ctxt.throw(err.to_string())
-                }
-            }
+            Err(err) => match err.downcast::<ErrorKind>() {
+                Ok(err) => ctxt.throw(err),
+                Err(err) => ctxt.throw(err.to_string()),
+            },
         }
         .into_inner()
         .raw()
@@ -382,9 +380,9 @@ mod tests {
         assert_eq!(
             ctxt.eval("foobar", "<evalScript>", Eval::GLOBAL)
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &ReferenceError(
+            ReferenceError(
                 "foobar is not defined".into(),
                 Some("    at <eval> (<evalScript>)\n".into())
             )
@@ -394,18 +392,18 @@ mod tests {
             ctxt.throw_syntax_error("foobar is not defined")
                 .ok()
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &SyntaxError("foobar is not defined".into(), None)
+            SyntaxError("foobar is not defined".into(), None)
         );
 
         assert_eq!(
             ctxt.throw_out_of_memory()
                 .ok()
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &InternalError("out of memory".into(), None)
+            InternalError("out of memory".into(), None)
         );
 
         assert_eq!(
@@ -416,9 +414,9 @@ mod tests {
             )
             .ok()
             .unwrap_err()
-            .downcast_ref::<ErrorKind>()
+            .downcast::<ErrorKind>()
             .unwrap(),
-            &URIError(
+            URIError(
                 "malformed URI sequence".into(),
                 Some("    at <eval> (<evalScript>)\n".into())
             )
@@ -435,9 +433,9 @@ mod tests {
         assert_eq!(
             ctxt.eval("throw new Error('Whoops!');", "<evalScript>", Eval::GLOBAL)
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Error(
+            Error(
                 "Whoops!".into(),
                 Some("    at <eval> (<evalScript>)\n".into())
             )
@@ -447,9 +445,9 @@ mod tests {
             ctxt.throw_error("Whoops!", Some("    at <eval> (<evalScript>)\n".into()))
                 .ok()
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Error(
+            Error(
                 "Whoops!".into(),
                 Some("    at <eval> (<evalScript>)\n".into())
             )
@@ -485,9 +483,9 @@ class CustomError extends Error {
                 Eval::GLOBAL,
             )
             .unwrap_err()
-            .downcast_ref::<ErrorKind>()
+            .downcast::<ErrorKind>()
             .unwrap(),
-            &Custom(
+            Custom(
                 "CustomError".into(),
                 "Whoops!".into(),
                 Some("    at <eval> (<evalScript>)\n".into())
@@ -498,7 +496,7 @@ class CustomError extends Error {
         //     ctxt.throw_custom_error("CustomError", "Whoops!", None)
         //         .ok()
         //         .unwrap_err()
-        //         .downcast_ref::<ErrorKind>()
+        //         .downcast::<ErrorKind>()
         //         .unwrap(),
         //     &Custom("CustomError".into(), "Whoops!".into(), None)
         // );
@@ -514,18 +512,18 @@ class CustomError extends Error {
         assert_eq!(
             ctxt.eval("throw 'Whoops!';", "<evalScript>", Eval::GLOBAL)
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Throw("Whoops!".into())
+            Throw("Whoops!".into())
         );
 
         assert_eq!(
             ctxt.throw("Whoops!")
                 .ok()
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Throw("Whoops!".into())
+            Throw("Whoops!".into())
         );
     }
 
@@ -539,18 +537,18 @@ class CustomError extends Error {
         assert_eq!(
             ctxt.eval("throw 123;", "<evalScript>", Eval::GLOBAL)
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Throw("123".into())
+            Throw("123".into())
         );
 
         assert_eq!(
             ctxt.throw(123)
                 .ok()
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &Throw("123".into())
+            Throw("123".into())
         );
     }
 }

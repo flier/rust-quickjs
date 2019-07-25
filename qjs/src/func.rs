@@ -36,12 +36,17 @@ macro_rules! array_args {
         $(
             impl<T> Args for [T; $N]
             where
-                T: NewValue + Clone,
+                T: NewValue,
             {
                 type Values = Vec<ffi::JSValue>;
 
                 fn into_values(self, ctxt: &ContextRef) -> Self::Values {
-                    self.into_iter().map(|v| v.new_value(ctxt)).collect()
+                    let len = self.len();
+                    let mut data = std::mem::ManuallyDrop::new(self);
+
+                    (0..len).map(|idx| unsafe {
+                        std::ptr::read(data.get_unchecked_mut(idx)).new_value(ctxt)
+                    }).collect()
                 }
             }
         )*

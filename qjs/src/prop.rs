@@ -10,9 +10,13 @@ use crate::{
 };
 
 bitflags! {
+    /// Flags for property
     pub struct Prop: u32 {
+        /// This property descriptor may be changed or deleted from the corresponding object.
         const CONFIGURABLE = ffi::JS_PROP_CONFIGURABLE;
+        /// The value associated with the property may be changed with an assignment operator.
         const WRITABLE = ffi::JS_PROP_WRITABLE;
+        /// This property shows up during enumeration of the properties on the corresponding object.
         const ENUMERABLE = ffi::JS_PROP_ENUMERABLE;
         const C_W_E = ffi::JS_PROP_C_W_E;
         const PROP_LENGTH = ffi::JS_PROP_LENGTH;
@@ -26,8 +30,11 @@ bitflags! {
         const HAS_CONFIGURABLE = ffi::JS_PROP_HAS_CONFIGURABLE;
         const HAS_WRITABLE = ffi::JS_PROP_HAS_WRITABLE;
         const HAS_ENUMERABLE = ffi::JS_PROP_HAS_ENUMERABLE;
+        /// Has function which serves as a getter for the property.
         const HAS_GET = ffi::JS_PROP_HAS_GET;
+        /// Has function which serves as a setter for the property.
         const HAS_SET = ffi::JS_PROP_HAS_SET;
+        /// Has value associated with the property.
         const HAS_VALUE = ffi::JS_PROP_HAS_VALUE;
 
         const THROW = ffi::JS_PROP_THROW;
@@ -38,7 +45,9 @@ bitflags! {
     }
 }
 
+/// Get a property value on an object.
 pub trait GetProperty {
+    /// Get a property value on an object.
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>>;
 }
 
@@ -71,7 +80,9 @@ impl GetProperty for Local<'_, ffi::JSAtom> {
     }
 }
 
+/// Set a property value on an object.
 pub trait SetProperty {
+    /// Set a property value on an object.
     fn set_property<T: NewValue>(
         &self,
         ctxt: &ContextRef,
@@ -155,7 +166,9 @@ impl SetProperty for Local<'_, ffi::JSAtom> {
     }
 }
 
+/// Check if a property on an object.
 pub trait HasProperty {
+    /// Check if a property on an object.
     fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error>;
 }
 
@@ -172,7 +185,11 @@ where
     }
 }
 
+/// Delete a property on an object.
 pub trait DeleteProperty {
+    /// Delete a property on an object.
+    ///
+    /// It returns a `bool` indicating whether or not the property was successfully deleted.
     fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error>;
 }
 
@@ -191,7 +208,9 @@ where
     }
 }
 
+/// Defines a new property directly on an object, or modifies an existing property on an object.
 pub trait DefineProperty {
+    /// Defines a new property directly on an object, or modifies an existing property on an object.
     fn define_property(
         self,
         ctxt: &ContextRef,
@@ -243,6 +262,7 @@ where
 }
 
 pub trait DefinePropertyValue {
+    /// Defines a new property with value directly on an object, or modifies an existing property on an object.
     fn define_property<T: NewValue>(
         self,
         ctxt: &ContextRef,
@@ -313,6 +333,7 @@ impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
 }
 
 pub trait DefinePropertyGetSet {
+    /// Defines a new property with getter and setter directly on an object, or modifies an existing property on an object.
     fn define_property(
         self,
         ctxt: &ContextRef,
@@ -358,10 +379,12 @@ where
 }
 
 impl<'a> Local<'a, Value> {
+    /// Get a property value on an object.
     pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
         self.ctxt.get_property(&self.inner, prop)
     }
 
+    /// Set a property value on an object.
     pub fn set_property<T: SetProperty, V: NewValue>(
         &self,
         prop: T,
@@ -370,14 +393,19 @@ impl<'a> Local<'a, Value> {
         self.ctxt.set_property(&self.inner, prop, val)
     }
 
+    /// Check if a property on an object.
     pub fn has_property<T: HasProperty>(&self, prop: T) -> Result<bool, Error> {
         self.ctxt.has_property(&self.inner, prop)
     }
 
+    /// Delete a property on an object.
+    ///
+    /// It returns a `bool` indicating whether or not the property was successfully deleted.
     pub fn delete_property<T: DeleteProperty>(&self, prop: T) -> Result<bool, Error> {
         self.ctxt.delete_property(&self.inner, prop)
     }
 
+    /// Defines a new property directly on an object, or modifies an existing property on an object.
     pub fn define_property<T: DefineProperty>(
         &self,
         prop: T,
@@ -390,6 +418,8 @@ impl<'a> Local<'a, Value> {
             .define_property(&self.inner, prop, val, getter, setter, flags)
     }
 
+    /// Defines a new property with value directly on an object,
+    /// or modifies an existing property on an object.
     pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
         &self,
         prop: T,
@@ -400,6 +430,8 @@ impl<'a> Local<'a, Value> {
             .define_property_value(&self.inner, prop, val, flags)
     }
 
+    /// Defines a new property with getter and setter directly on an object,
+    /// or modifies an existing property on an object.
     pub fn define_property_get_set<T: DefinePropertyGetSet>(
         &self,
         prop: T,
@@ -411,20 +443,24 @@ impl<'a> Local<'a, Value> {
             .define_property_get_set(&self.inner, prop, getter, setter, flags)
     }
 
+    /// Check if an object is extensible (whether it can have new properties added to it).
     pub fn is_extensible(&self) -> Result<bool, Error> {
         self.ctxt.is_extensible(&self.inner)
     }
 
+    /// Prevents new properties from ever being added to an object (i.e. prevents future extensions to the object).
     pub fn prevent_extensions(&self) -> Result<bool, Error> {
         self.ctxt.prevent_extensions(&self.inner)
     }
 }
 
 impl ContextRef {
+    /// Get a property value on an object.
     pub fn get_property<T: GetProperty>(&self, this: &Value, prop: T) -> Option<Local<Value>> {
         prop.get_property(self, this)
     }
 
+    /// Set a property value on an object.
     pub fn set_property<T: SetProperty, V: NewValue>(
         &self,
         this: &Value,
@@ -434,14 +470,19 @@ impl ContextRef {
         prop.set_property(self, this, val)
     }
 
+    /// Check if a property on an object.
     pub fn has_property<T: HasProperty>(&self, this: &Value, prop: T) -> Result<bool, Error> {
         prop.has_property(self, this)
     }
 
+    /// Delete a property on an object.
+    ///
+    /// It returns a `bool` indicating whether or not the property was successfully deleted.
     pub fn delete_property<T: DeleteProperty>(&self, this: &Value, prop: T) -> Result<bool, Error> {
         prop.delete_property(self, this)
     }
 
+    /// Defines a new property directly on an object, or modifies an existing property on an object.
     pub fn define_property<T: DefineProperty>(
         &self,
         this: &Value,
@@ -454,6 +495,8 @@ impl ContextRef {
         prop.define_property(self, this, val, getter, setter, flags)
     }
 
+    /// Defines a new property with value directly on an object,
+    /// or modifies an existing property on an object.
     pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
         &self,
         this: &Value,
@@ -464,6 +507,8 @@ impl ContextRef {
         prop.define_property(self, this, val, flags)
     }
 
+    /// Defines a new property with getter and setter directly on an object,
+    /// or modifies an existing property on an object.
     pub fn define_property_get_set<T: DefinePropertyGetSet>(
         &self,
         this: &Value,
@@ -475,10 +520,12 @@ impl ContextRef {
         prop.define_property(self, this, getter, setter, flags)
     }
 
+    /// Check if an object is extensible (whether it can have new properties added to it).
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
         self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.raw()) })
     }
 
+    /// Prevents new properties from ever being added to an object (i.e. prevents future extensions to the object).
     pub fn prevent_extensions(&self, obj: &Value) -> Result<bool, Error> {
         self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.raw()) })
     }
@@ -526,9 +573,9 @@ mod tests {
         assert_eq!(
             obj.set_property("foo", "bar")
                 .unwrap_err()
-                .downcast_ref::<ErrorKind>()
+                .downcast::<ErrorKind>()
                 .unwrap(),
-            &ErrorKind::TypeError("object is not extensible".into(), None)
+            ErrorKind::TypeError("object is not extensible".into(), None)
         );
     }
 }

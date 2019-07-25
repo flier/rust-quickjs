@@ -1,3 +1,5 @@
+#![allow(clippy::cast_lossless)]
+
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::fmt;
@@ -20,6 +22,7 @@ pub const ERR: i32 = -1;
 pub const TRUE: i32 = 1;
 pub const FALSE: i32 = 0;
 
+/// `Value` represents a Javascript value which can be a primitive type or an object.
 #[repr(transparent)]
 pub struct Value(ffi::JSValue);
 
@@ -125,6 +128,12 @@ impl fmt::Debug for Local<'_, Value> {
     }
 }
 
+impl Clone for Local<'_, Value> {
+    fn clone(&self) -> Self {
+        self.ctxt.clone_value(&self.inner)
+    }
+}
+
 impl<'a> Local<'a, Value> {
     pub fn check_undefined(self) -> Option<Local<'a, Value>> {
         if self.inner.is_undefined() {
@@ -194,14 +203,14 @@ impl<'a> Local<'a, Value> {
 }
 
 impl ContextRef {
-    pub fn clone_value(&self, v: &Value) -> Value {
+    pub fn clone_value(&self, v: &Value) -> Local<Value> {
         unsafe {
             if v.has_ref_cnt() {
                 v.as_ptr::<ffi::JSRefCountHeader>().as_mut().ref_count += 1;
             }
         }
 
-        Value(v.0)
+        self.bind(v.0)
     }
 
     pub fn free_value<T: Into<Value>>(&self, v: T) {
@@ -328,6 +337,7 @@ impl ContextRef {
         Value(unsafe { ffi::JS_ToPropertyKey(self.as_ptr(), val.0) })
     }
 
+    /// Convert Javascript String to C UTF-8 encoded strings.
     pub fn to_cstr(&self, val: &Value) -> Option<Local<&CStr>> {
         let mut len = 0;
 
@@ -385,15 +395,6 @@ where
 
 pub trait NewValue {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue;
-}
-
-impl<T> NewValue for &T
-where
-    T: NewValue + Clone,
-{
-    fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-        self.clone().new_value(ctxt)
-    }
 }
 
 impl NewValue for bool {

@@ -11,14 +11,18 @@ use crate::{
     Args, ContextRef, Local, NewValue, Prop, Value,
 };
 
+/// `CFunction` is a shortcut to easily add functions, setters and getters properties to a given object.
 pub type CFunction<T> = fn(&ContextRef, Option<&Value>, &[Value]) -> T;
 
+/// Unsafe C function
 pub type UnsafeCFunction = unsafe extern "C" fn(
     ctx: *mut ffi::JSContext,
     this_val: ffi::JSValue,
     argc: c_int,
     argv: *mut ffi::JSValue,
 ) -> ffi::JSValue;
+
+/// Unsafe C function with magic
 pub type UnsafeCFunctionMagic = unsafe extern "C" fn(
     ctx: *mut ffi::JSContext,
     this_val: ffi::JSValue,
@@ -26,6 +30,8 @@ pub type UnsafeCFunctionMagic = unsafe extern "C" fn(
     argv: *mut ffi::JSValue,
     magic: c_int,
 ) -> ffi::JSValue;
+
+/// Unsafe C function with data
 pub type UnsafeCFunctionData = unsafe extern "C" fn(
     ctx: *mut ffi::JSContext,
     this_val: ffi::JSValue,
@@ -35,6 +41,7 @@ pub type UnsafeCFunctionData = unsafe extern "C" fn(
     func_data: *mut ffi::JSValue,
 ) -> ffi::JSValue;
 
+/// C function definition
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CFunc {
