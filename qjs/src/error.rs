@@ -51,6 +51,42 @@ pub enum ErrorKind {
     URIError(String, Option<String>),
 }
 
+impl ErrorKind {
+    pub fn message(&self) -> &str {
+        use ErrorKind::*;
+
+        match self {
+            Throw(msg)
+            | Error(msg, _)
+            | Custom(_, msg, _)
+            | EvalError(msg, _)
+            | InternalError(msg, _)
+            | RangeError(msg, _)
+            | ReferenceError(msg, _)
+            | SyntaxError(msg, _)
+            | TypeError(msg, _)
+            | URIError(msg, _) => msg.as_str(),
+        }
+    }
+
+    pub fn stack(&self) -> Option<&str> {
+        use ErrorKind::*;
+
+        match self {
+            Throw(_) => None,
+            Error(_, ref stack)
+            | Custom(_, _, ref stack)
+            | EvalError(_, ref stack)
+            | InternalError(_, ref stack)
+            | RangeError(_, ref stack)
+            | ReferenceError(_, ref stack)
+            | SyntaxError(_, ref stack)
+            | TypeError(_, ref stack)
+            | URIError(_, ref stack) => stack.as_ref().map(|s| s.as_str()),
+        }
+    }
+}
+
 impl TryFrom<Local<'_, Value>> for ErrorKind {
     type Error = Error;
 
@@ -166,7 +202,7 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_Throw(self.as_ptr(), exc.new_value(self)) })
     }
 
-    pub fn exception(&self) -> Option<Local<Value>> {
+    pub fn get_exception(&self) -> Option<Local<Value>> {
         self.bind(unsafe { ffi::JS_GetException(self.as_ptr()) })
             .check_undefined()
     }
@@ -324,7 +360,7 @@ impl ContextRef {
     fn take_exception(&self) -> Result<ErrorKind, Error> {
         self.reset_uncatchable_error();
 
-        self.exception()
+        self.get_exception()
             .ok_or_else(|| err_msg("expected exception"))
             .and_then(ErrorKind::try_from)
     }

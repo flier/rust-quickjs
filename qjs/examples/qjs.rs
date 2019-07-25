@@ -15,7 +15,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 use structopt::StructOpt;
 
-use qjs::{ffi, Context, ContextRef, Eval, EvalBinary, MallocFunctions, Runtime};
+use qjs::{ffi, Context, ContextRef, ErrorKind, Eval, EvalBinary, MallocFunctions, Runtime};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "qjs", about = "QuickJS stand alone interpreter")]
@@ -240,10 +240,10 @@ std.global.os = os;
 
         let mut interactive = opt.interactive;
 
-        if let Some(expr) = opt.expr {
+        let res = if let Some(expr) = opt.expr {
             debug!("eval expr: {}", expr);
 
-            ctxt.eval(expr, "<cmdline>", Eval::GLOBAL)?;
+            ctxt.eval(expr, "<cmdline>", Eval::GLOBAL)
         } else if let Some(filename) = opt.args.first() {
             debug!("eval file: {}", filename);
 
@@ -255,9 +255,26 @@ std.global.os = os;
                     } else {
                         Eval::GLOBAL
                     },
-            )?;
+            )
         } else {
             interactive = true;
+
+            Ok(ctxt.undefined())
+        };
+
+        match res {
+            Ok(res) => {
+                if !res.is_undefined() {
+                    println!("{}", res);
+                }
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+
+                if let Some(stack) = err.downcast_ref::<ErrorKind>().and_then(|err| err.stack()) {
+                    eprintln!("{}", stack)
+                }
+            }
         }
 
         if interactive {

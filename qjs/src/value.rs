@@ -220,6 +220,34 @@ impl ContextRef {
         }
     }
 
+    pub fn nan(&self) -> Local<Value> {
+        self.bind(Value::nan())
+    }
+
+    pub fn null(&self) -> Local<Value> {
+        self.bind(Value::null())
+    }
+
+    pub fn undefined(&self) -> Local<Value> {
+        self.bind(Value::undefined())
+    }
+
+    pub fn false_value(&self) -> Local<Value> {
+        self.bind(Value::false_value())
+    }
+
+    pub fn true_value(&self) -> Local<Value> {
+        self.bind(Value::true_value())
+    }
+
+    pub fn exception(&self) -> Local<Value> {
+        self.bind(Value::exception())
+    }
+
+    pub fn uninitialized(&self) -> Local<Value> {
+        self.bind(Value::uninitialized())
+    }
+
     pub fn new_value<T: NewValue>(&self, s: T) -> Value {
         Value(s.new_value(self))
     }
