@@ -1,0 +1,4 @@
+101c101
+< CFLAGS_OPT=$(CFLAGS) -O2
+---
+> CFLAGS_OPT=$(CFLAGS) -O0 -g

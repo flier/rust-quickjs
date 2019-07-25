@@ -40,7 +40,7 @@ pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCF
 pub use class::{ClassDef, ClassId};
 pub use context::{Builder, Context, ContextRef};
 pub use error::ErrorKind;
-pub use eval::Eval;
+pub use eval::{Eval, EvalBinary};
 pub use ffi::JSMemoryUsage as MemoryUsage;
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};

@@ -4,14 +4,18 @@ use std::ptr::NonNull;
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Eval, ModuleDef, RuntimeRef};
+use crate::{ffi, ContextRef, EvalBinary, ModuleDef, RuntimeRef};
 
 impl ContextRef {
     pub fn init_module_std(&self) -> Result<NonNull<ModuleDef>, Error> {
+        debug!("init `std` module");
+
         self.check_null(unsafe { ffi::js_init_module_std(self.as_ptr(), cstr!(std).as_ptr()) })
     }
 
     pub fn init_module_os(&self) -> Result<NonNull<ModuleDef>, Error> {
+        debug!("init `os` module");
+
         self.check_null(unsafe { ffi::js_init_module_std(self.as_ptr(), cstr!(os).as_ptr()) })
     }
 
@@ -23,6 +27,9 @@ impl ContextRef {
             .into_iter()
             .map(CString::new)
             .collect::<Result<Vec<_>, _>>()?;
+
+        debug!("add global helpers with script args: {:?}", args);
+
         let args = args.iter().map(|s| s.as_ptr()).collect::<Vec<_>>();
 
         unsafe {
@@ -40,7 +47,7 @@ impl ContextRef {
         unsafe { ffi::js_std_dump_error(self.as_ptr()) }
     }
 
-    pub fn std_eval_binary(&self, buf: &[u8], flags: Eval) {
+    pub fn std_eval_binary(&self, buf: &[u8], flags: EvalBinary) {
         unsafe {
             ffi::js_std_eval_binary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits() as i32)
         }

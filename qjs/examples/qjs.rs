@@ -15,7 +15,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 use structopt::StructOpt;
 
-use qjs::{ffi, Context, ContextRef, Eval, MallocFunctions, Runtime};
+use qjs::{ffi, Context, ContextRef, Eval, EvalBinary, MallocFunctions, Runtime};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "qjs", about = "QuickJS stand alone interpreter")]
@@ -171,6 +171,8 @@ unsafe extern "C" fn jsc_module_loader(
     let ctxt = ContextRef::from_ptr(ctx);
     let module_name = Path::new(OsStr::from_bytes(CStr::from_ptr(module_name).to_bytes()));
 
+    debug!("load module: {:?}", module_name);
+
     ctxt.eval_file(module_name, Eval::MODULE | Eval::COMPILE_ONLY)
         .ok()
         .map_or_else(null_mut, |func| func.as_ptr().as_ptr())
@@ -207,7 +209,9 @@ fn main() -> Result<(), Error> {
     if !opt.empty_run {
         if cfg!(feature = "qjscalc") {
             if opt.load_jscalc {
-                ctxt.std_eval_binary(&*ffi::QJSCALC, Eval::GLOBAL);
+                debug!("load jscalc.js");
+
+                ctxt.eval_binary(&*ffi::QJSCALC, EvalBinary::empty())?;
             }
         }
 
@@ -218,6 +222,8 @@ fn main() -> Result<(), Error> {
         ctxt.init_module_os()?;
 
         if !opt.no_std {
+            debug!("import `std` and `os` module");
+
             // make 'std' and 'os' visible to non module code
             ctxt.eval(
                 r#"
@@ -235,8 +241,12 @@ std.global.os = os;
         let mut interactive = opt.interactive;
 
         if let Some(expr) = opt.expr {
+            debug!("eval expr: {}", expr);
+
             ctxt.eval(expr, "<cmdline>", Eval::GLOBAL)?;
         } else if let Some(filename) = opt.args.first() {
+            debug!("eval file: {}", filename);
+
             ctxt.eval_file(
                 Path::new(filename),
                 Eval::SHEBANG
@@ -251,7 +261,7 @@ std.global.os = os;
         }
 
         if interactive {
-            ctxt.std_eval_binary(&*ffi::REPL, Eval::GLOBAL);
+            ctxt.eval_binary(&*ffi::REPL, EvalBinary::empty())?;
         }
 
         ctxt.std_loop();

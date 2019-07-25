@@ -38,72 +38,65 @@ fn build_libquickjs() -> Result<(), Error> {
             .output()?;
     }
 
-    if cfg!(target_os = "macos") {
+    let apply_patch = |file, name: &str| -> Result<(), Error> {
         let patch = CARGO_MANIFEST_DIR
-            .join("patches/Makefile.macos.patch")
-            .canonicalize()?;
-
-        println!("patch `Makefile` for macos with {:?}", patch);
-
-        Command::new("patch")
-            .current_dir(&quickjs_dir)
-            .arg("Makefile")
-            .arg(patch)
-            .output()?;
-    }
-
-    let apply_patch = |name: &str| -> Result<(), Error> {
-        let patch = CARGO_MANIFEST_DIR
-            .join(format!("patches/quickjs.c.{}.patch", name))
+            .join(format!("patches/{}.{}.patch", file, name))
             .canonicalize()?;
 
         println!(
-            "patch `quickjs.c` to {} with {:?}",
+            "patch `{}` to {} with {:?}",
+            file,
             name.replace("_", " "),
             patch
         );
 
         Command::new("patch")
             .current_dir(&quickjs_dir)
-            .arg("quickjs.c")
+            .arg(file)
             .arg(patch)
             .output()?;
 
         Ok(())
     };
 
-    if cfg!(feature = "dump_dump_freeclosure") {
-        apply_patch("dump_free")?;
+    if cfg!(target_os = "macos") {
+        apply_patch("Makefile", "macos")?;
+    }
+    if env::var("PROFILE").expect("PROFILE") == "debug" {
+        apply_patch("Makefile", "debug")?;
+    }
+    if cfg!(feature = "dump_free") {
+        apply_patch("quickjs.c", "dump_free")?;
     }
     if cfg!(feature = "dump_closure") {
-        apply_patch("dump_closure")?;
+        apply_patch("quickjs.c", "dump_closure")?;
     }
     if cfg!(feature = "dump_gc") {
-        apply_patch("dump_gc")?;
+        apply_patch("quickjs.c", "dump_gc")?;
     }
     if cfg!(feature = "dump_gc_free") {
-        apply_patch("dump_gc_free")?;
+        apply_patch("quickjs.c", "dump_gc_free")?;
     }
     if cfg!(feature = "dump_leaks") {
-        apply_patch("dump_leaks")?;
+        apply_patch("quickjs.c", "dump_leaks")?;
     }
     if cfg!(feature = "dump_objects") {
-        apply_patch("dump_objects")?;
+        apply_patch("quickjs.c", "dump_objects")?;
     }
     if cfg!(feature = "dump_atoms") {
-        apply_patch("dump_atoms")?;
+        apply_patch("quickjs.c", "dump_atoms")?;
     }
     if cfg!(feature = "dump_shapes") {
-        apply_patch("dump_shapes")?;
+        apply_patch("quickjs.c", "dump_shapes")?;
     }
     if cfg!(feature = "dump_module_resolve") {
-        apply_patch("dump_module_resolve")?;
+        apply_patch("quickjs.c", "dump_module_resolve")?;
     }
     if cfg!(feature = "dump_promise") {
-        apply_patch("dump_promise")?;
+        apply_patch("quickjs.c", "dump_promise")?;
     }
     if cfg!(feature = "dump_read_object") {
-        apply_patch("dump_read_object")?;
+        apply_patch("quickjs.c", "dump_read_object")?;
     }
 
     let repl_c = if cfg!(feature = "bignum") {

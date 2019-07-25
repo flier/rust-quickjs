@@ -21,8 +21,6 @@ bitflags! {
 
         const TYPE_MASK = ffi::JS_EVAL_TYPE_MASK;
 
-        const LOAD_ONLY = ffi::JS_EVAL_BINARY_LOAD_ONLY;
-
         /// skip first line beginning with '#!'
         const SHEBANG = ffi::JS_EVAL_FLAG_SHEBANG;
         /// force 'strict' mode
@@ -31,6 +29,12 @@ bitflags! {
         const STRIP = ffi::JS_EVAL_FLAG_STRIP;
         /// internal use
         const COMPILE_ONLY = ffi::JS_EVAL_FLAG_COMPILE_ONLY;
+    }
+}
+
+bitflags! {
+    pub struct EvalBinary: u32 {
+        const LOAD_ONLY = ffi::JS_EVAL_BINARY_LOAD_ONLY;
     }
 }
 
@@ -43,7 +47,12 @@ impl ContextRef {
     ) -> Result<Local<Value>, Error> {
         let input = CString::new(input).context("input")?;
 
-        trace!("eval @ {}: {}", filename, input.to_string_lossy());
+        trace!(
+            "eval `{}` {:?}: {}",
+            filename,
+            flags,
+            input.to_string_lossy()
+        );
 
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;
@@ -76,7 +85,9 @@ impl ContextRef {
         Ok(s)
     }
 
-    pub fn eval_binary(&self, buf: &[u8], flags: Eval) -> Result<Local<Value>, Error> {
+    pub fn eval_binary(&self, buf: &[u8], flags: EvalBinary) -> Result<Local<Value>, Error> {
+        trace!("eval {} bytes binary {:?}", buf.len(), flags,);
+
         self.bind(unsafe {
             ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32)
         })

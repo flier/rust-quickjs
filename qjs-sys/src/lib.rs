@@ -24,7 +24,7 @@ cfg_if! {
     if #[cfg(feature = "repl")] {
         extern "C" {
             #[no_mangle]
-            pub static repl: *const u8;
+            pub static repl: [u8; 0];
 
             #[no_mangle]
             pub static repl_size: u32;
@@ -32,7 +32,7 @@ cfg_if! {
 
         lazy_static! {
             pub static ref REPL: &'static [u8] = unsafe {
-                std::slice::from_raw_parts(repl, repl_size as usize)
+                std::slice::from_raw_parts(repl.as_ptr(), repl_size as usize)
             };
         }
     }
@@ -42,7 +42,7 @@ cfg_if! {
     if #[cfg(feature = "qjscalc")] {
         extern "C" {
             #[no_mangle]
-            pub static qjscalc: *const u8;
+            pub static qjscalc: [u8; 0];
 
             #[no_mangle]
             pub static qjscalc_size: u32;
@@ -50,7 +50,7 @@ cfg_if! {
 
         lazy_static! {
             pub static ref QJSCALC: &'static [u8] = unsafe {
-                std::slice::from_raw_parts(qjscalc, qjscalc_size as usize)
+                std::slice::from_raw_parts(qjscalc.as_ptr(), qjscalc_size as usize)
             };
         }
     }
