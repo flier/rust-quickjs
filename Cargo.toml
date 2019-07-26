@@ -1,6 +1,43 @@
-[workspace]
-members = ["qjs-sys", "qjs"]
+[package]
+name = "qjs"
+version = "0.1.0"
+authors = ["Flier Lu <flier.lu@gmail.com>"]
+description = "Rust binding for the QuickJS Javascript Engine"
+repository = "https://github.com/flier/rust-quickjs"
+readme = "README.md"
+license = "MIT"
+keywords = ["javascript", "quickjs"]
+categories = ["api-bindings"]
+edition = "2018"
 
-[profile.release]
-opt-level = 3
-lto = true
+[badges]
+appveyor = { repository = "flier/rust-quickjs", branch = "master", service = "github" }
+travis-ci = { repository = "flier/rust-quickjs", branch = "master" }
+
+[features]
+default = ["bignum", "repl", "qjscalc", "lto", "stdlib"]
+bignum = ["qjs-sys/bignum"]
+repl = ["qjs-sys/repl"]
+qjscalc = ["qjs-sys/qjscalc"]
+lto = ["qjs-sys/lto"]
+stdlib = []
+
+[dependencies]
+log = "0.4"
+failure = "0.1"
+bitflags = "1.1"
+foreign-types = "0.4"
+lazy_static = "1.3"
+cstr = "0.1"
+
+qjs-sys = { version = "0.1", path = "qjs-sys" }
+
+[dev-dependencies]
+pretty_env_logger = "0.3"
+cfg-if = "0.1"
+structopt = "0.2"
+tempfile = "3.1"
+cc = "1.0"
+platforms = "0.2"
+cfile = "0.5"
+libc = "0.2"
