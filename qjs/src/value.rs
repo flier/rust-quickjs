@@ -389,6 +389,27 @@ where
     }
 }
 
+impl From<bool> for Value {
+    fn from(v: bool) -> Self {
+        Value(mkval(JS_TAG_BOOL, if v { TRUE } else { FALSE }))
+    }
+}
+
+impl From<i32> for Value {
+    fn from(v: i32) -> Self {
+        Value(mkval(JS_TAG_INT, v))
+    }
+}
+
+impl From<f64> for Value {
+    fn from(v: f64) -> Self {
+        Value(ffi::JSValue {
+            u: ffi::JSValueUnion { float64: v },
+            tag: JS_TAG_FLOAT64 as i64,
+        })
+    }
+}
+
 /// Create new `Value` from primitive.
 pub trait NewValue {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue;
@@ -396,7 +417,7 @@ pub trait NewValue {
 
 impl NewValue for bool {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        mkval(JS_TAG_BOOL, if self { TRUE } else { FALSE })
+        Value::from(self).0
     }
 }
 
@@ -438,7 +459,7 @@ impl NewValue for i16 {
 
 impl NewValue for i32 {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        mkval(JS_TAG_INT, self)
+        Value::from(self).0
     }
 }
 
@@ -456,10 +477,7 @@ impl NewValue for f32 {
 
 impl NewValue for f64 {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        ffi::JSValue {
-            u: ffi::JSValueUnion { float64: self },
-            tag: JS_TAG_FLOAT64 as i64,
-        }
+        Value::from(self).0
     }
 }
 
