@@ -2,9 +2,16 @@
 name = "qjs-sys"
 version = "0.1.0"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
+description = "Native bindings to the QuickJS Javascript Engine"
+repository = "https://github.com/flier/rust-quickjs"
+license = "MIT"
+keywords = ["javascript", "quickjs"]
+categories = ["api-bindings"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[badges]
+appveyor = { repository = "flier/rust-quickjs", branch = "master", service = "github" }
+travis-ci = { repository = "flier/rust-quickjs", branch = "master" }
 
 [features]
 default = ["bignum", "repl", "qjscalc", "lto", "dump_leaks"]
