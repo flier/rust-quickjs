@@ -191,15 +191,9 @@ mod tests {
 
         assert!(ctxt.global_object().set_property("buf", arr_buf).unwrap());
 
-        assert_eq!(
-            ctxt.eval("buf.byteLength", "<evalScript>", Eval::GLOBAL)
-                .unwrap()
-                .as_int()
-                .unwrap(),
-            16
-        );
+        assert_eq!(ctxt.eval("buf.byteLength", Eval::GLOBAL).unwrap(), Some(16));
 
-        ctxt.eval(
+        ctxt.eval::<_, ()>(
             r#"
                 var arr = new Uint16Array(buf);
 
@@ -207,7 +201,6 @@ mod tests {
                 arr[1] = 456;
                 arr[2] = 567;
                 "#,
-            "<evalScript>",
             Eval::GLOBAL,
         )
         .unwrap();

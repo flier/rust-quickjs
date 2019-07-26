@@ -6,7 +6,9 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef, Value};
 
+/// Create or find an `Atom` base on `&str`, `*const c_char` or `u32`.
 pub trait NewAtom {
+    /// Create or find an `Atom` in the context.
     fn new_atom(self, context: &ContextRef) -> ffi::JSAtom;
 }
 
@@ -40,25 +42,28 @@ impl Unbindable for ffi::JSAtom {
     }
 }
 
-impl Into<ffi::JSAtom> for Local<'_, ffi::JSAtom> {
+/// Object property names and some strings are stored as Atoms (unique strings) to save memory and allow fast comparison.
+pub type Atom<'a> = Local<'a, ffi::JSAtom>;
+
+impl Into<ffi::JSAtom> for Atom<'_> {
     fn into(self) -> ffi::JSAtom {
         self.into_inner()
     }
 }
 
-impl Clone for Local<'_, ffi::JSAtom> {
+impl Clone for Atom<'_> {
     fn clone(&self) -> Self {
         self.ctxt.clone_atom(self.inner)
     }
 }
 
-impl fmt::Display for Local<'_, ffi::JSAtom> {
+impl fmt::Display for Atom<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.to_cstr().to_string_lossy())
     }
 }
 
-impl fmt::Debug for Local<'_, ffi::JSAtom> {
+impl fmt::Debug for Atom<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("Atom")
             .field(&self.to_cstr().to_string_lossy())
@@ -66,19 +71,23 @@ impl fmt::Debug for Local<'_, ffi::JSAtom> {
     }
 }
 
-impl Local<'_, ffi::JSAtom> {
+impl Atom<'_> {
+    /// Free an `Atom` reference.
     pub fn free(&self) {
         self.ctxt.free_atom(self.inner)
     }
 
+    /// Convert an `Atom` to a Javascript `Value`.
     pub fn to_value(&self) -> Local<Value> {
         self.ctxt.atom_to_value(self.inner)
     }
 
-    pub fn to_string(&self) -> Local<Value> {
+    /// Convert an `Atom` to a Javascript `String`.
+    pub fn to_str(&self) -> Local<Value> {
         self.ctxt.atom_to_string(self.inner)
     }
 
+    /// Convert an `Atom` to a `Local<&CStr>`.
     pub fn to_cstr(&self) -> Local<&CStr> {
         self.ctxt.atom_to_cstr(self.inner)
     }
@@ -91,6 +100,7 @@ impl RuntimeRef {
 }
 
 impl ContextRef {
+    /// Create or find an `Atom` in the context.
     pub fn new_atom<T: NewAtom>(&self, v: T) -> Local<ffi::JSAtom> {
         self.bind_atom(v.new_atom(self))
     }
@@ -102,6 +112,7 @@ impl ContextRef {
         }
     }
 
+    /// Create or find an `Atom` base on string.
     pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Local<Value> {
         self.bind(unsafe {
             ffi::JS_NewAtomString(
@@ -113,22 +124,27 @@ impl ContextRef {
         })
     }
 
+    /// Free an `Atom` reference.
     pub fn free_atom(&self, atom: ffi::JSAtom) {
         unsafe { ffi::JS_FreeAtom(self.as_ptr(), atom) }
     }
 
+    /// Clone an `Atom` in the context.
     pub fn clone_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
         self.bind_atom(unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) })
     }
 
+    /// Convert an `Atom` to a Javascript `Value`.
     pub fn atom_to_value(&self, atom: ffi::JSAtom) -> Local<Value> {
         self.bind(unsafe { ffi::JS_AtomToValue(self.as_ptr(), atom) })
     }
 
+    /// Convert an `Atom` to a Javascript `String`.
     pub fn atom_to_string(&self, atom: ffi::JSAtom) -> Local<Value> {
         self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) })
     }
 
+    /// Convert an `Atom` to a `&CStr`.
     pub fn atom_to_cstr(&self, atom: ffi::JSAtom) -> Local<&CStr> {
         self.bind(unsafe { CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom)) })
     }

@@ -543,14 +543,14 @@ mod tests {
         let ctxt = Context::new(&rt);
 
         let obj = ctxt
-            .eval("new Object();", "<evalScript>", Eval::GLOBAL)
+            .eval_script("new Object();", "<evalScript>", Eval::GLOBAL)
             .unwrap();
 
         assert!(!obj.has_property("foo").unwrap());
         assert!(obj.get_property("foo").is_none());
         assert!(obj.set_property("foo", "bar").unwrap());
         assert!(obj.has_property("foo").unwrap());
-        assert_eq!(obj.get_property("foo").unwrap().to_str().unwrap(), "bar");
+        assert_eq!(obj.get_property("foo").unwrap().to_string(), "bar");
         assert!(obj.delete_property("foo").unwrap());
         assert!(!obj.has_property("foo").unwrap());
     }
@@ -563,7 +563,7 @@ mod tests {
         let ctxt = Context::new(&rt);
 
         let obj = ctxt
-            .eval("new Object();", "<evalScript>", Eval::GLOBAL)
+            .eval_script("new Object();", "<evalScript>", Eval::GLOBAL)
             .unwrap();
 
         assert!(obj.is_extensible().unwrap());

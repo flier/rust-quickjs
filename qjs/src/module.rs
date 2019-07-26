@@ -6,12 +6,20 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{ffi, ContextRef, RuntimeRef};
 
-pub use crate::ffi::{
-    JSModuleDef as ModuleDef, JSModuleInitFunc as ModuleInitFunc,
-    JSModuleLoaderFunc as ModuleLoaderFunc, JSModuleNormalizeFunc as ModuleNormalizeFunc,
-};
+/// The C module definition.
+pub type ModuleDef = ffi::JSModuleDef;
+
+/// The C module init function.
+pub type ModuleInitFunc = ffi::JSModuleInitFunc;
+
+/// The module loader function.
+pub type ModuleLoaderFunc = ffi::JSModuleLoaderFunc;
+
+/// The filename normalizer function.
+pub type ModuleNormalizeFunc = ffi::JSModuleNormalizeFunc;
 
 impl RuntimeRef {
+    /// Set the module loader and normalizer functions.
     pub fn set_module_loader<T>(
         &self,
         module_normalize: ModuleNormalizeFunc,
@@ -30,6 +38,7 @@ impl RuntimeRef {
 }
 
 impl ContextRef {
+    /// Create a new C module.
     pub fn new_c_module<T: Into<Vec<u8>>>(
         &self,
         name: T,

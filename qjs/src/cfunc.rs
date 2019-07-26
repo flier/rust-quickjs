@@ -61,6 +61,7 @@ pub enum CFunc {
 }
 
 impl ContextRef {
+    /// Create a new C function.
     pub fn new_c_function<T: NewValue>(
         &self,
         func: CFunction<T>,
@@ -105,6 +106,7 @@ impl ContextRef {
         Ok(func)
     }
 
+    /// Create a new C function with magic.
     pub fn new_c_function_magic(
         &self,
         func: UnsafeCFunctionMagic,
@@ -127,6 +129,7 @@ impl ContextRef {
         .ok()
     }
 
+    /// Create a new C function with prototype and magic.
     pub fn new_c_function2(
         &self,
         func: UnsafeCFunction,
@@ -149,6 +152,7 @@ impl ContextRef {
         .ok()
     }
 
+    /// Create a new C function with magic and data.
     pub fn new_c_function_data<T: Args>(
         &self,
         func: UnsafeCFunctionData,
@@ -196,11 +200,8 @@ mod tests {
         ctxt.global_object().set_property("hello", hello).unwrap();
 
         assert_eq!(
-            ctxt.eval("hello('world')", "<evalScript>", Eval::GLOBAL)
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "hello world"
+            ctxt.eval("hello('world')", Eval::GLOBAL).unwrap(),
+            Some("hello world".to_owned())
         );
     }
 }

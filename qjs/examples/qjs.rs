@@ -225,7 +225,7 @@ fn main() -> Result<(), Error> {
             debug!("import `std` and `os` module");
 
             // make 'std' and 'os' visible to non module code
-            ctxt.eval(
+            ctxt.eval_script(
                 r#"
 import * as std from 'std';
 import * as os from 'os';
@@ -243,7 +243,7 @@ std.global.os = os;
         let res = if let Some(expr) = opt.expr {
             debug!("eval expr: {}", expr);
 
-            ctxt.eval(expr, "<cmdline>", Eval::GLOBAL)
+            ctxt.eval_script(expr, "<cmdline>", Eval::GLOBAL)
         } else if let Some(filename) = opt.args.first() {
             debug!("eval file: {}", filename);
 

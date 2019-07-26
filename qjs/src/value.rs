@@ -1,6 +1,6 @@
 #![allow(clippy::cast_lossless)]
 
-use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::ffi::CStr;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -116,14 +116,14 @@ impl RuntimeRef {
 
 impl fmt::Display for Local<'_, Value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_cstr().unwrap().to_string_lossy())
+        f.write_str(&self.to_cstr().unwrap().to_string_lossy().to_string())
     }
 }
 
 impl fmt::Debug for Local<'_, Value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("Value")
-            .field(&self.to_cstr().unwrap().to_string_lossy())
+            .field(&self.to_cstr().unwrap().to_string_lossy().to_string())
             .finish()
     }
 }
@@ -181,8 +181,8 @@ impl<'a> Local<'a, Value> {
         self.ctxt.to_float64(&self.inner)
     }
 
-    pub fn to_string(&self) -> Local<Value> {
-        self.ctxt.bind(self.ctxt.to_string(&self.inner))
+    pub fn to_str(&self) -> Local<Value> {
+        self.ctxt.bind(self.ctxt.to_str(&self.inner))
     }
 
     pub fn to_property_key(&self) -> Local<Value> {
@@ -191,10 +191,6 @@ impl<'a> Local<'a, Value> {
 
     pub fn to_cstr(&self) -> Option<Local<&CStr>> {
         self.ctxt.to_cstr(&self.inner)
-    }
-
-    pub fn to_str(&self) -> Option<Cow<str>> {
-        self.to_cstr().map(|s| s.to_string_lossy())
     }
 
     pub fn instance_of(&self, obj: &Value) -> Result<bool, Error> {
@@ -329,7 +325,7 @@ impl ContextRef {
         }
     }
 
-    pub fn to_string(&self, val: &Value) -> Value {
+    pub fn to_str(&self, val: &Value) -> Value {
         Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
     }
 
@@ -518,11 +514,11 @@ impl<'a> NewValue for &'a Local<'a, Value> {
 /// Extract primitive from `Local<Value>`.
 pub trait ExtractValue: Sized {
     /// Extract primitive from `Local<Value>`.
-    fn extract_value(v: Local<Value>) -> Option<Self>;
+    fn extract_value(v: &Local<Value>) -> Option<Self>;
 }
 
 impl ExtractValue for () {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         if v.is_null() {
             None
         } else {
@@ -532,38 +528,50 @@ impl ExtractValue for () {
 }
 
 impl ExtractValue for bool {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         v.as_bool().or_else(|| v.to_bool())
     }
 }
 
 impl ExtractValue for i32 {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         v.as_int().or_else(|| v.to_int32())
     }
 }
 
 impl ExtractValue for i64 {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         v.as_int().map(i64::from).or_else(|| v.to_int64())
     }
 }
 
 impl ExtractValue for u64 {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         v.to_index()
     }
 }
 
 impl ExtractValue for f64 {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
         v.as_float().or_else(|| v.to_float64())
     }
 }
 
 impl ExtractValue for String {
-    fn extract_value(v: Local<Value>) -> Option<Self> {
-        v.to_str().map(|s| s.to_string())
+    fn extract_value(v: &Local<Value>) -> Option<Self> {
+        v.to_cstr().map(|s| s.to_string_lossy().to_string())
+    }
+}
+
+impl<T: ExtractValue + PartialEq> PartialEq<T> for Local<'_, Value> {
+    fn eq(&self, other: &T) -> bool {
+        T::extract_value(self).map_or(false, |v| v.eq(other))
+    }
+}
+
+impl<T: ExtractValue + PartialOrd> PartialOrd<T> for Local<'_, Value> {
+    fn partial_cmp(&self, other: &T) -> Option<Ordering> {
+        T::extract_value(self).and_then(|v| v.partial_cmp(other))
     }
 }
 
@@ -743,7 +751,7 @@ mod tests {
         let ctxt = Context::new(&rt);
 
         let car = ctxt
-            .eval(
+            .eval_script(
                 r#"
 function Car(make, model, year) {
     this.make = make;

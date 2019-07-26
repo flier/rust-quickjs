@@ -39,25 +39,49 @@ bitflags! {
 }
 
 /// Script source.
-pub trait Source {
-    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error>;
+pub trait Source: Sized {
+    type Flags;
+
+    /// Default eval flags.
+    fn default_flags() -> Self::Flags;
+
+    /// Evaluate a script or module source.
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error>;
 }
 
 impl Source for &str {
-    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
-        ctxt.eval(self, "<evalScript>", Eval::GLOBAL)
+    type Flags = Eval;
+
+    fn default_flags() -> Self::Flags {
+        Eval::GLOBAL
+    }
+
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_script(self, "<evalScript>", flags)
     }
 }
 
 impl Source for &Path {
-    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
-        ctxt.eval_file(self, Eval::GLOBAL | Eval::SHEBANG)
+    type Flags = Eval;
+
+    fn default_flags() -> Self::Flags {
+        Eval::GLOBAL | Eval::SHEBANG
+    }
+
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_file(self, flags)
     }
 }
 
 impl Source for &[u8] {
-    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
-        ctxt.eval_binary(self, EvalBinary::empty())
+    type Flags = EvalBinary;
+
+    fn default_flags() -> Self::Flags {
+        EvalBinary::empty()
+    }
+
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_binary(self, flags)
     }
 }
 
@@ -108,11 +132,11 @@ pub fn eval<T: Source, V: ExtractValue>(source: T) -> Result<Option<V>, Error> {
         ctxt.eval_binary(&*ffi::QJSCALC, EvalBinary::empty())?;
     }
 
-    let res = source.eval(&ctxt).map(|v| {
+    let res = source.eval(&ctxt, T::default_flags()).map(|v| {
         if v.is_undefined() {
             None
         } else {
-            V::extract_value(v)
+            V::extract_value(&v)
         }
     });
 
@@ -123,7 +147,22 @@ pub fn eval<T: Source, V: ExtractValue>(source: T) -> Result<Option<V>, Error> {
 
 impl ContextRef {
     /// Evaluate a script or module source.
-    pub fn eval<T: Into<Vec<u8>>>(
+    pub fn eval<T: Source, V: ExtractValue>(
+        &self,
+        source: T,
+        flags: T::Flags,
+    ) -> Result<Option<V>, Error> {
+        source.eval(self, flags).map(|v| {
+            if v.is_undefined() {
+                None
+            } else {
+                V::extract_value(&v)
+            }
+        })
+    }
+
+    /// Evaluate a script or module source.
+    pub fn eval_script<T: Into<Vec<u8>>>(
         &self,
         input: T,
         filename: &str,
@@ -158,7 +197,7 @@ impl ContextRef {
         let filename = path.as_ref().to_string_lossy().to_string();
 
         self.load_file(path)
-            .and_then(|s| self.eval(s, &filename, flags))
+            .and_then(|s| self.eval_script(s, &filename, flags))
     }
 
     fn load_file<P: AsRef<Path>>(&self, path: P) -> Result<String, Error> {
@@ -217,17 +256,23 @@ mod tests {
 
         assert_eq!(ctxt.runtime(), &rt);
 
-        let res = ctxt.eval("1+2", "<evalScript>", Eval::GLOBAL).unwrap();
+        let res = ctxt
+            .eval_script("1+2", "<evalScript>", Eval::GLOBAL)
+            .unwrap();
 
         assert_eq!(res.tag(), JS_TAG_INT);
         assert!(res.is_number());
         assert_eq!(res.as_int().unwrap(), 3);
 
         assert_eq!(
-            ctxt.eval("foobar", "<evalScript>", Eval::GLOBAL)
+            ctxt.eval::<_, ()>("foobar", Eval::GLOBAL)
                 .unwrap_err()
-                .to_string(),
-            "ReferenceError: foobar is not defined"
+                .downcast::<ErrorKind>()
+                .unwrap(),
+            ErrorKind::ReferenceError(
+                "foobar is not defined".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
     }
 
@@ -281,11 +326,8 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(obj.get_property("name").unwrap().to_str().unwrap(), "John");
+        assert_eq!(obj.get_property("name").unwrap().to_string(), "John");
         assert_eq!(obj.get_property("age").unwrap().to_int32().unwrap(), 30);
-        assert_eq!(
-            obj.get_property("city").unwrap().to_str().unwrap(),
-            "New York"
-        );
+        assert_eq!(obj.get_property("city").unwrap().to_string(), "New York");
     }
 }

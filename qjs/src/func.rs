@@ -256,7 +256,7 @@ mod tests {
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        ctxt.eval(
+        ctxt.eval::<_, ()>(
             r#"
 function fib(n)
 {
@@ -273,7 +273,6 @@ function Product(name, price) {
     this.price = price;
 }
         "#,
-            "<evalScript>",
             Eval::GLOBAL,
         )
         .unwrap();
@@ -293,10 +292,7 @@ function Product(name, price) {
 
         let product = product_ctor.call_constructor(("foobar", 30)).unwrap();
 
-        assert_eq!(
-            product.get_property("name").unwrap().to_str().unwrap(),
-            "foobar"
-        );
+        assert_eq!(product.get_property("name").unwrap().to_string(), "foobar");
         assert_eq!(product.get_property("price").unwrap().as_int().unwrap(), 30);
     }
 }

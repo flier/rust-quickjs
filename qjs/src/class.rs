@@ -2,7 +2,10 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{ffi, value::FALSE, ContextRef, Local, Runtime, RuntimeRef, Value};
 
+/// A globally allocated class ID.
 pub type ClassId = ffi::JSClassID;
+
+/// The Javascript class definition.
 pub type ClassDef = ffi::JSClassDef;
 
 impl Runtime {

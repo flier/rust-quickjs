@@ -99,25 +99,15 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
         Ok(if value.is_error() {
             let name = value
                 .get_property("name")
-                .ok_or_else(|| err_msg("missing `name` property"))?;
-            let name = name
-                .to_cstr()
-                .ok_or_else(|| err_msg("invalid `name` property"))?;
+                .ok_or_else(|| err_msg("missing `name` property"))?
+                .to_string();
             let msg = value
                 .get_property("message")
-                .ok_or_else(|| err_msg("missing `message` property"))?;
-            let msg = msg
-                .to_cstr()
-                .ok_or_else(|| err_msg("invalid `message` property"))?
-                .to_string_lossy()
+                .ok_or_else(|| err_msg("missing `message` property"))?
                 .to_string();
-            let stack = if let Some(stack) = value.get_property("stack") {
-                stack.to_cstr().map(|s| s.to_string_lossy().to_string())
-            } else {
-                None
-            };
+            let stack = value.get_property("stack").map(|s| s.to_string());
 
-            match &*name.to_string_lossy() {
+            match name.as_str() {
                 "EvalError" => EvalError(msg, stack),
                 "InternalError" => InternalError(msg, stack),
                 "RangeError" => RangeError(msg, stack),
@@ -126,16 +116,10 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
                 "TypeError" => TypeError(msg, stack),
                 "URIError" => URIError(msg, stack),
                 "Error" => Error(msg, stack),
-                _ => Custom(name.to_string_lossy().to_string(), msg, stack),
+                _ => Custom(name, msg, stack),
             }
         } else {
-            let msg = value
-                .to_cstr()
-                .ok_or_else(|| err_msg("invalid value"))?
-                .to_string_lossy()
-                .to_string();
-
-            Throw(msg)
+            Throw(value.to_string())
         })
     }
 }
@@ -378,7 +362,7 @@ mod tests {
         let ctxt = Context::new(&rt);
 
         assert_eq!(
-            ctxt.eval("foobar", "<evalScript>", Eval::GLOBAL)
+            ctxt.eval::<_, ()>("foobar", Eval::GLOBAL)
                 .unwrap_err()
                 .downcast::<ErrorKind>()
                 .unwrap(),
@@ -431,7 +415,7 @@ mod tests {
         let ctxt = Context::new(&rt);
 
         assert_eq!(
-            ctxt.eval("throw new Error('Whoops!');", "<evalScript>", Eval::GLOBAL)
+            ctxt.eval::<_, ()>("throw new Error('Whoops!');", Eval::GLOBAL)
                 .unwrap_err()
                 .downcast::<ErrorKind>()
                 .unwrap(),
@@ -461,7 +445,7 @@ mod tests {
         let rt = Runtime::new();
         let ctxt = Context::new(&rt);
 
-        ctxt.eval(
+        ctxt.eval::<_, ()>(
             r#"
 class CustomError extends Error {
     constructor(...params) {
@@ -471,20 +455,15 @@ class CustomError extends Error {
     }
 }
 "#,
-            "<evalScript>",
             Eval::GLOBAL,
         )
         .unwrap();
 
         assert_eq!(
-            ctxt.eval(
-                "throw new CustomError('Whoops!')",
-                "<evalScript>",
-                Eval::GLOBAL,
-            )
-            .unwrap_err()
-            .downcast::<ErrorKind>()
-            .unwrap(),
+            ctxt.eval::<_, ()>("throw new CustomError('Whoops!')", Eval::GLOBAL,)
+                .unwrap_err()
+                .downcast::<ErrorKind>()
+                .unwrap(),
             Custom(
                 "CustomError".into(),
                 "Whoops!".into(),
@@ -510,7 +489,7 @@ class CustomError extends Error {
         let ctxt = Context::new(&rt);
 
         assert_eq!(
-            ctxt.eval("throw 'Whoops!';", "<evalScript>", Eval::GLOBAL)
+            ctxt.eval::<_, ()>("throw 'Whoops!';", Eval::GLOBAL)
                 .unwrap_err()
                 .downcast::<ErrorKind>()
                 .unwrap(),
@@ -535,7 +514,7 @@ class CustomError extends Error {
         let ctxt = Context::new(&rt);
 
         assert_eq!(
-            ctxt.eval("throw 123;", "<evalScript>", Eval::GLOBAL)
+            ctxt.eval::<_, ()>("throw 123;", Eval::GLOBAL)
                 .unwrap_err()
                 .downcast::<ErrorKind>()
                 .unwrap(),
