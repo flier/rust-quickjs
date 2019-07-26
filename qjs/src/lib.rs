@@ -40,7 +40,7 @@ pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCF
 pub use class::{ClassDef, ClassId};
 pub use context::{Builder as ContextBuilder, Context, ContextRef};
 pub use error::ErrorKind;
-pub use eval::{Eval, EvalBinary};
+pub use eval::{eval, Eval, EvalBinary, Source};
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
 pub use job::JobFunc;
@@ -51,7 +51,7 @@ pub use prop::{
     SetProperty,
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, MemoryUsage, Runtime, RuntimeRef};
-pub use value::{NewValue, Value};
+pub use value::{ExtractValue, NewValue, Value};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

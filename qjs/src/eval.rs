@@ -1,12 +1,12 @@
 use std::ffi::CString;
 use std::fs::File;
-use std::io::Read;
+use std::io::prelude::*;
 use std::path::Path;
 
 use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Local, Value};
+use crate::{ffi, Context, ContextRef, ExtractValue, Local, Runtime, Value};
 
 bitflags! {
     /// Flags for `eval` method.
@@ -36,6 +36,89 @@ bitflags! {
     pub struct EvalBinary: u32 {
         const LOAD_ONLY = ffi::JS_EVAL_BINARY_LOAD_ONLY;
     }
+}
+
+/// Script source.
+pub trait Source {
+    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error>;
+}
+
+impl Source for &str {
+    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval(self, "<evalScript>", Eval::GLOBAL)
+    }
+}
+
+impl Source for &Path {
+    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_file(self, Eval::GLOBAL | Eval::SHEBANG)
+    }
+}
+
+impl Source for &[u8] {
+    fn eval(self, ctxt: &'_ ContextRef) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_binary(self, EvalBinary::empty())
+    }
+}
+
+/// Evaluate a script or module source.
+///
+/// The `eval` function accept the source code `&str`, filename `&Path` or precompiled bytecode `&[u8]`,
+/// and returns the primitive value as you special, including `bool`, `i32`, `i64`, `u64`, `f64` or `String`.
+///
+/// - The Javascript `undefined` and `null` value will be returned as `None`.
+/// - The Javascript `exception` will be convert to a `ErrorKind` error.
+///
+/// # Examples
+///
+/// The `eval` function accept the source code `&str` and returns the primitive value.
+///
+/// ```
+/// let v: Option<i32> = qjs::eval("1+2").unwrap();
+///
+/// assert_eq!(v, Some(3));
+/// ```
+///
+/// The Javascript `exception` will be convert to a `ErrorKind` error.
+///
+/// ```
+/// assert_eq!(
+///     qjs::eval::<_, ()>("throw new Error('Whoops!')")
+///         .unwrap_err()
+///         .downcast::<qjs::ErrorKind>()
+///         .unwrap(),
+///     qjs::ErrorKind::Error(
+///         "Whoops!".into(),
+///         Some("    at <eval> (<evalScript>)\n".into())
+///     )
+/// );
+/// ```
+pub fn eval<T: Source, V: ExtractValue>(source: T) -> Result<Option<V>, Error> {
+    let rt = Runtime::new();
+    let ctxt = Context::new(&rt);
+
+    rt.set_module_loader::<()>(None, Some(ffi::js_module_loader), None);
+
+    ctxt.std_add_helpers::<_, String>(None)?;
+
+    ctxt.init_module_std()?;
+    ctxt.init_module_os()?;
+
+    if cfg!(feature = "qjscalc") {
+        ctxt.eval_binary(&*ffi::QJSCALC, EvalBinary::empty())?;
+    }
+
+    let res = source.eval(&ctxt).map(|v| {
+        if v.is_undefined() {
+            None
+        } else {
+            V::extract_value(v)
+        }
+    });
+
+    rt.std_free_handlers();
+
+    res
 }
 
 impl ContextRef {
@@ -121,12 +204,12 @@ impl ContextRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::{value::JS_TAG_INT, Context, Runtime};
+    use crate::{value::JS_TAG_INT, Context, ErrorKind, Runtime};
 
     use super::*;
 
     #[test]
-    fn eval() {
+    fn context() {
         let _ = pretty_env_logger::try_init();
 
         let rt = Runtime::new();
@@ -145,6 +228,42 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             "ReferenceError: foobar is not defined"
+        );
+    }
+
+    #[test]
+    fn str() {
+        assert_eq!(eval::<_, i32>("1+2").unwrap(), Some(3));
+    }
+
+    #[test]
+    fn file() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+
+        write!(&mut f, "Float.PI").unwrap();
+
+        let path = f.into_temp_path();
+        let path: &Path = path.as_ref();
+
+        assert!((eval::<_, f64>(path).unwrap().unwrap() - 3.14).abs() < 0.01);
+    }
+
+    #[test]
+    fn binary() {
+        assert_eq!(eval::<_, ()>(*ffi::REPL).unwrap(), None);
+    }
+
+    #[test]
+    fn error() {
+        assert_eq!(
+            eval::<_, i32>("throw new Error('Whoops!')")
+                .unwrap_err()
+                .downcast::<ErrorKind>()
+                .unwrap(),
+            ErrorKind::Error(
+                "Whoops!".into(),
+                Some("    at <eval> (<evalScript>)\n".into())
+            )
         );
     }
 

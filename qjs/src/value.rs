@@ -393,6 +393,7 @@ where
     }
 }
 
+/// Create new `Value` from primitive.
 pub trait NewValue {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue;
 }
@@ -511,6 +512,58 @@ impl<'a> NewValue for Local<'a, Value> {
 impl<'a> NewValue for &'a Local<'a, Value> {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         ctxt.clone_value(self).into()
+    }
+}
+
+/// Extract primitive from `Local<Value>`.
+pub trait ExtractValue: Sized {
+    /// Extract primitive from `Local<Value>`.
+    fn extract_value(v: Local<Value>) -> Option<Self>;
+}
+
+impl ExtractValue for () {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        if v.is_null() {
+            None
+        } else {
+            Some(())
+        }
+    }
+}
+
+impl ExtractValue for bool {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.as_bool().or_else(|| v.to_bool())
+    }
+}
+
+impl ExtractValue for i32 {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.as_int().or_else(|| v.to_int32())
+    }
+}
+
+impl ExtractValue for i64 {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.as_int().map(i64::from).or_else(|| v.to_int64())
+    }
+}
+
+impl ExtractValue for u64 {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.to_index()
+    }
+}
+
+impl ExtractValue for f64 {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.as_float().or_else(|| v.to_float64())
+    }
+}
+
+impl ExtractValue for String {
+    fn extract_value(v: Local<Value>) -> Option<Self> {
+        v.to_str().map(|s| s.to_string())
     }
 }
 
