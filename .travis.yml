@@ -1,11 +1,13 @@
 os:
   - linux
   - osx
+dist: xenial
 language: rust
 rust:
   - stable
   - beta
   - nightly
+cache: cargo
 matrix:
   allow_failures:
     - rust: nightly
