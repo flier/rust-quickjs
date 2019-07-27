@@ -14,11 +14,12 @@ appveyor = { repository = "flier/rust-quickjs", branch = "master", service = "gi
 travis-ci = { repository = "flier/rust-quickjs", branch = "master" }
 
 [features]
-default = ["bignum", "repl", "qjscalc"]
+default = ["bignum", "repl", "qjscalc", "pic"]
 bignum = []
 repl = []
 qjscalc = ["bignum"]
 lto = []
+pic = []
 debug = []
 gen = ["bindgen"]
 dump_free = []

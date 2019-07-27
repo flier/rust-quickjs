@@ -65,6 +65,9 @@ fn build_libquickjs() -> Result<(), Error> {
     if cfg!(feature = "debug") {
         apply_patch("Makefile", "debug")?;
     }
+    if cfg!(feature = "pic") {
+        apply_patch("Makefile", "pic")?;
+    }
     if cfg!(feature = "dump_free") {
         apply_patch("quickjs.c", "dump_free")?;
     }
