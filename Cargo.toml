@@ -15,7 +15,7 @@ appveyor = { repository = "flier/rust-quickjs", branch = "master", service = "gi
 travis-ci = { repository = "flier/rust-quickjs", branch = "master" }
 
 [features]
-default = ["bignum", "repl", "qjscalc", "lto", "stdlib"]
+default = ["bignum", "repl", "qjscalc", "stdlib"]
 bignum = ["qjs-sys/bignum"]
 repl = ["qjs-sys/repl"]
 qjscalc = ["qjs-sys/qjscalc"]

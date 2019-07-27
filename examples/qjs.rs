@@ -147,7 +147,7 @@ unsafe extern "C" fn js_trace_realloc(
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 unsafe extern "C" fn js_trace_malloc_usable_size(ptr: *const c_void) -> usize {
-    libc::malloc_usable_size(ptr)
+    libc::malloc_usable_size(ptr as *mut _)
 }
 
 cfg_if! {

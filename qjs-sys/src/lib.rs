@@ -18,7 +18,7 @@ cfg_if! {
 
 lazy_static! {
     pub static ref VERSION: &'static str =
-        include_str!(concat!(env!("OUT_DIR"), "/quickjs/VERSION")).trim();
+        include_str!(concat!(env!("OUT_DIR"), "/VERSION")).trim();
 }
 
 cfg_if! {

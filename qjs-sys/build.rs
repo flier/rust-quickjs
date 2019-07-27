@@ -1,12 +1,12 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::ffi::CString;
 use std::process::Command;
 
 use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 
-const QUICKJS_DIR: &str = "quickjs";
 const QUICKJS_SRC: &str = "quickjs-2019-07-21.tar.xz";
 
 lazy_static! {
@@ -17,7 +17,7 @@ lazy_static! {
 }
 
 fn build_libquickjs() -> Result<(), Error> {
-    let quickjs_dir = OUT_DIR.join(QUICKJS_DIR);
+    let quickjs_dir = OUT_DIR.as_path();
 
     if !quickjs_dir.join("quickjs.h").is_file() {
         let quickjs_src = CARGO_MANIFEST_DIR.join(QUICKJS_SRC).canonicalize()?;
@@ -62,7 +62,7 @@ fn build_libquickjs() -> Result<(), Error> {
     if cfg!(target_os = "macos") {
         apply_patch("Makefile", "macos")?;
     }
-    if env::var("PROFILE").expect("PROFILE") == "debug" {
+    if cfg!(feature = "debug") {
         apply_patch("Makefile", "debug")?;
     }
     if cfg!(feature = "dump_free") {
@@ -112,24 +112,29 @@ fn build_libquickjs() -> Result<(), Error> {
         if cfg!(feature = "lto") { ".lto" } else { "" }
     );
     let libquickjs = format!("lib{}.a", quickjs);
+    let mut targets = vec![libquickjs];
 
-    if !quickjs_dir.join(&libquickjs).is_file() {
-        let mut args = vec![libquickjs];
+    if cfg!(feature = "repl") {
+        targets.push(repl_c.to_owned());
+    }
 
-        if cfg!(feature = "repl") {
-            args.push(repl_c.to_owned());
+    if cfg!(feature = "qjscalc") {
+        targets.push(qjscalc_c.to_owned());
+    }
+
+    for target in &targets {
+        if !quickjs_dir.join(target).is_file() {
+            println!("make {:?} ...", target);
+
+            let output = Command::new("make")
+                .arg(target)
+                .current_dir(&quickjs_dir)
+                .output()?;
+
+            println!("status: {}", output.status);
+            println!("stdout: {}", CString::new(output.stdout)?.to_string_lossy());
+            eprintln!("stderr: {}", CString::new(output.stderr)?.to_string_lossy());
         }
-
-        if cfg!(feature = "qjscalc") {
-            args.push(qjscalc_c.to_owned());
-        }
-
-        println!("make {:?} ...", args);
-
-        Command::new("make")
-            .args(args)
-            .current_dir(&quickjs_dir)
-            .output()?;
     }
 
     println!(
