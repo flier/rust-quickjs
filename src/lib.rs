@@ -13,6 +13,12 @@ extern crate cstr;
 
 pub use qjs_sys as ffi;
 
+#[allow(unused_imports)]
+#[macro_use]
+extern crate qjs_derive;
+#[doc(hidden)]
+pub use qjs_derive::*;
+
 #[macro_use]
 mod macros;
 mod arraybuf;

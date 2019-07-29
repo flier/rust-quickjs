@@ -18,14 +18,110 @@ use syn::{
     Expr, FnArg, Result, ReturnType,
 };
 
+pub fn js(input: TokenStream) -> Result<TokenStream> {
+    match syn::parse2(input)? {
+        Item::Eval(eval) => {
+            let context = eval.context.map_or_else(
+                || quote! { qjs:: },
+                |WithContext { ident, .. }| quote! { #ident. },
+            );
+            let script = eval.script.to_string();
+
+            Ok(quote! { #context eval(#script) })
+        }
+        Item::Closure(Closure {
+            captures,
+            params,
+            output,
+            script,
+            ..
+        }) => {
+            let script = format!(
+                "function({}) {{ {} }}",
+                params
+                    .iter()
+                    .flat_map(|param| {
+                        match param {
+                            syn::FnArg::Captured(syn::ArgCaptured {
+                                pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
+                                ..
+                            }) => Some(ident.to_string()),
+                            _ => {
+                                warn!("ignore param: {:?}", param);
+
+                                None
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                script.to_string()
+            );
+
+            Ok(quote! {
+                | #(#params),* | #output {
+                    qjs::eval(#script)
+                }
+            })
+        }
+    }
+}
+
+pub enum Item {
+    Eval(Eval),
+    Closure(Closure),
+}
+
+impl Parse for Item {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.fork().parse::<Closure>().is_ok() {
+            input.parse().map(Item::Closure)
+        } else {
+            input.parse().map(Item::Eval)
+        }
+    }
+}
+
+pub struct Eval {
+    pub context: Option<WithContext>,
+    pub script: TokenStream,
+}
+
+impl Parse for Eval {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Eval {
+            context: if input.peek(syn::Ident) && input.peek2(FatArrow) {
+                Some(input.parse()?)
+            } else {
+                None
+            },
+            script: input.parse()?,
+        })
+    }
+}
+
+pub struct WithContext {
+    pub ident: Ident,
+    pub fat_arrow_token: FatArrow,
+}
+
+impl Parse for WithContext {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(WithContext {
+            ident: input.parse()?,
+            fat_arrow_token: input.parse()?,
+        })
+    }
+}
+
 pub struct Closure {
-    captures: Option<Captures>,
-    paren_token: Paren,
-    params: Punctuated<FnArg, Comma>,
-    output: Option<ReturnType>,
-    fat_arrow_token: FatArrow,
-    brace_token: Option<Brace>,
-    script: TokenStream,
+    pub captures: Option<Captures>,
+    pub paren_token: Paren,
+    pub params: Punctuated<FnArg, Comma>,
+    pub output: Option<ReturnType>,
+    pub fat_arrow_token: FatArrow,
+    pub brace_token: Option<Brace>,
+    pub script: TokenStream,
 }
 
 impl Parse for Closure {
@@ -65,8 +161,8 @@ impl Parse for Closure {
 }
 
 pub struct Captures {
-    bracket_token: Bracket,
-    inputs: Punctuated<Ident, Comma>,
+    pub bracket_token: Bracket,
+    pub inputs: Punctuated<Ident, Comma>,
 }
 
 impl Parse for Captures {
@@ -80,14 +176,6 @@ impl Parse for Captures {
     }
 }
 
-pub fn closure(input: TokenStream) -> Result<TokenStream> {
-    let c: Closure = syn::parse2(input)?;
-
-    let expanded = quote! {};
-
-    Ok(expanded)
-}
-
 pub enum Variable {
     Ident(Ident),
     Expr(Expr),
@@ -98,8 +186,6 @@ pub fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<Token
     let mut interpolating = None;
 
     for token in input {
-        trace!("token: {:?}", token);
-
         match token {
             TokenTree::Punct(ref punct)
                 if punct.as_char() == '#' && punct.spacing() == Spacing::Alone =>
@@ -152,6 +238,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn javascript() {
+        assert_eq!(
+            js(quote! { 1+2 }).unwrap().to_string(),
+            quote! { qjs::eval("1 + 2") }.to_string(),
+        );
+        assert_eq!(
+            js(quote! { ctxt => 1+2 }).unwrap().to_string(),
+            quote! { ctxt.eval("1 + 2") }.to_string(),
+        );
+
+        assert_eq!(
+            js(quote! { () => 1+2 }).unwrap().to_string(),
+            quote! { | | { qjs::eval("function() { 1 + 2 }") } }.to_string()
+        );
+
+        assert_eq!(
+            js(quote! { (n: usize) -> usize => { n+1 } })
+                .unwrap()
+                .to_string(),
+            quote! { |n: usize| -> usize { qjs::eval("function(n) { n + 1 }") } }.to_string()
+        );
+    }
+
+    #[test]
+    fn eval() {
+        let e: Eval = parse_quote! { 1+2 };
+
+        assert!(e.context.is_none());
+
+        let e: Eval = parse_quote! { ctxt => 1+2 };
+
+        assert_eq!(e.context.unwrap().ident.to_string(), "ctxt");
+        assert_eq!(e.script.to_string(), "1 + 2");
+    }
+
+    #[test]
     fn empty_closure() {
         let c: Closure = parse_quote! { () => {} };
 
@@ -163,16 +285,22 @@ mod tests {
 
     #[test]
     fn simple_closure() {
-        let c: Closure = parse_quote! { (n: usize) -> usize => { print(n); n } };
+        let c: Closure = parse_quote! { [print] (n: usize) -> usize => { print(n); n } };
 
-        assert!(c.captures.is_none());
+        let inputs = c.captures.unwrap().inputs;
+
+        assert_eq!(inputs.len(), 1);
+        assert_matches!(
+            inputs.first().unwrap().value().to_string().as_str(),
+            "print"
+        );
+
         assert_eq!(c.params.len(), 1);
         assert_matches!(
             c.params.first().unwrap().value(),
             FnArg::Captured(syn::ArgCaptured {
                 pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
-                colon_token,
-                ty: syn::Type::Path(syn::TypePath { path, ..}),
+                ty: syn::Type::Path(syn::TypePath { path, ..}),..
             }) if ident == "n" && path.is_ident("usize")
         );
 
@@ -209,14 +337,14 @@ mod tests {
             )
             .unwrap()
             .to_string(),
-            "print ( \"hello world\" )"
+            quote! { print("hello world") }.to_string()
         );
 
         assert_eq!(
             interpolate(TokenStream::from_str("print(#name)").unwrap(), &mut vars)
                 .unwrap()
                 .to_string(),
-            "print ( __scope . var0 )"
+            quote! { print(__scope.var0) }.to_string()
         );
 
         assert_eq!(
@@ -226,7 +354,7 @@ mod tests {
             )
             .unwrap()
             .to_string(),
-            "print ( __scope . var1 )"
+            quote! { print(__scope.var1) }.to_string()
         );
     }
 }

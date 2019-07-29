@@ -12,3 +12,6 @@ matrix:
   allow_failures:
     - rust: nightly
   fast_finish: true
+script:
+  - cargo build --verbose --all -vvv
+  - cargo test --verbose --all -vvv
