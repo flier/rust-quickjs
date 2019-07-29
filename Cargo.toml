@@ -31,6 +31,7 @@ lazy_static = "1.3"
 cstr = "0.1"
 
 qjs-sys = { version = "0.1", path = "qjs-sys" }
+qjs-derive = { version = "0.1", path = "qjs-derive" }
 
 [dev-dependencies]
 pretty_env_logger = "0.3"
