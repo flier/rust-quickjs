@@ -1,7 +1,7 @@
 use std::env;
+use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
-use std::ffi::CString;
 use std::process::Command;
 
 use failure::{Error, ResultExt};

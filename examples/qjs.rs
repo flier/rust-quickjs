@@ -249,12 +249,11 @@ std.global.os = os;
 
             ctxt.eval_file(
                 Path::new(filename),
-                Eval::SHEBANG
-                    | if opt.module || filename.ends_with(".mjs") {
-                        Eval::MODULE
-                    } else {
-                        Eval::GLOBAL
-                    },
+                if opt.module || filename.ends_with(".mjs") {
+                    Eval::MODULE
+                } else {
+                    Eval::GLOBAL
+                },
             )
         } else {
             interactive = true;

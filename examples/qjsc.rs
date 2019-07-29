@@ -283,8 +283,7 @@ impl Loader {
 
         let func = ctxt.eval_file(
             filename,
-            Eval::SHEBANG
-                | Eval::COMPILE_ONLY
+            Eval::COMPILE_ONLY
                 | if is_module {
                     Eval::MODULE
                 } else {
