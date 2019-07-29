@@ -20,8 +20,6 @@ bitflags! {
         /// indirect call (internal use)
         const INDIRECT = ffi::JS_EVAL_TYPE_INDIRECT;
 
-        /// skip first line beginning with '#!'
-        const SHEBANG = ffi::JS_EVAL_FLAG_SHEBANG;
         /// force 'strict' mode
         const STRICT = ffi::JS_EVAL_FLAG_STRICT;
         /// force 'strip' mode
@@ -65,7 +63,7 @@ impl Source for &Path {
     type Flags = Eval;
 
     fn default_flags() -> Self::Flags {
-        Eval::GLOBAL | Eval::SHEBANG
+        Eval::GLOBAL
     }
 
     fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {

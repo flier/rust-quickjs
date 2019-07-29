@@ -7,7 +7,7 @@ use std::process::Command;
 use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 
-const QUICKJS_SRC: &str = "quickjs-2019-07-21.tar.xz";
+const QUICKJS_SRC: &str = "quickjs-2019-07-28.tar.xz";
 
 lazy_static! {
     static ref OUT_DIR: PathBuf = env::var_os("OUT_DIR").expect("OUT_DIR").into();
@@ -166,7 +166,7 @@ fn build_libquickjs() -> Result<(), Error> {
 fn gen_binding_files() -> Result<(), Error> {
     use failure::err_msg;
 
-    let quickjs_dir = OUT_DIR.join(QUICKJS_DIR);
+    let quickjs_dir = OUT_DIR.as_path();
     let raw_file = OUT_DIR.join("raw.rs");
 
     println!("generating binding files to {:?}", raw_file);
