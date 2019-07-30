@@ -1,3 +1,12 @@
+//! `qjs` is an experimental Rust binding for the QuickJS Javascript Engine
+//!
+//! # Examples
+//!
+//! ```
+//! let v: i32 = qjs::js!(1+2).unwrap().unwrap();
+//!
+//! assert_eq!(v, 3);
+//! ```
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -13,11 +22,9 @@ extern crate cstr;
 
 pub use qjs_sys as ffi;
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate qjs_derive;
-#[doc(hidden)]
-pub use qjs_derive::*;
+use proc_macro_hack::proc_macro_hack;
+#[proc_macro_hack]
+pub use qjs_derive::js;
 
 #[macro_use]
 mod macros;
