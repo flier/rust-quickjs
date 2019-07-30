@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 #[macro_use]
 extern crate log;
 
@@ -13,9 +15,10 @@ use quote::quote;
 use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream},
+    parse_quote,
     punctuated::Punctuated,
     token::{Brace, Bracket, Comma, FatArrow, Paren, RArrow},
-    Expr, FnArg, Result, ReturnType,
+    Expr, FnArg, Result, ReturnType, Type,
 };
 
 pub fn js(input: TokenStream) -> Result<TokenStream> {
@@ -36,33 +39,69 @@ pub fn js(input: TokenStream) -> Result<TokenStream> {
             script,
             ..
         }) => {
-            let script = format!(
-                "function({}) {{ {} }}",
-                params
-                    .iter()
-                    .flat_map(|param| {
-                        match param {
-                            syn::FnArg::Captured(syn::ArgCaptured {
-                                pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
-                                ..
-                            }) => Some(ident.to_string()),
-                            _ => {
-                                warn!("ignore param: {:?}", param);
+            let param_names = params
+                .iter()
+                .flat_map(|param| match param {
+                    syn::FnArg::Captured(syn::ArgCaptured {
+                        pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
+                        ..
+                    }) => Some(ident.to_string()),
+                    _ => {
+                        warn!("ignore param: {:?}", param);
 
-                                None
-                            }
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "),
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let script = format!(
+                "({}) => {{ {} }}",
+                param_names.join(", "),
                 script.to_string()
             );
 
-            Ok(quote! {
-                | #(#params),* | #output {
-                    qjs::eval(#script)
+            let (output, output_ty) = if let Some(output) = output {
+                if let ReturnType::Type(rarrow, output_ty) = output {
+                    (
+                        ReturnType::Type(
+                            rarrow,
+                            Box::new(Type::Path(parse_quote! {
+                                Result<Option<#output_ty>, failure::Error>
+                            })),
+                        ),
+                        output_ty,
+                    )
+                } else {
+                    (ReturnType::Default, parse_quote! { () })
                 }
-            })
+            } else {
+                (ReturnType::Default, parse_quote! { () })
+            };
+
+            let args = param_names
+                .into_iter()
+                .map(|name| Ident::new(&name, Span::call_site()))
+                .collect::<Vec<_>>();
+            let args = args.as_slice();
+
+            let expanded = quote! {
+                | #(#args),* | #output {
+                    let rt = qjs::Runtime::new();
+                    let ctxt = qjs::Context::new(&rt);
+                    let func = ctxt.eval_script(#script, "<evalScript>", qjs::Eval::GLOBAL)?;
+
+                    func.call(None, (#(#args),*))
+                        .map(|v| if v.is_undefined() {
+                            None
+                        } else {
+                            <#output_ty as qjs::ExtractValue>::extract_value(&v)
+                        })
+                }
+            };
+
+            dbg!(expanded.to_string());
+
+            Ok(expanded)
         }
     }
 }
@@ -232,8 +271,6 @@ pub fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<Token
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
-    use syn::parse_quote;
 
     use super::*;
 

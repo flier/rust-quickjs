@@ -2,10 +2,25 @@
 //!
 //! # Examples
 //!
+//! `js` macro can evalute the Javascript code in an anonymouse context.
+//!
 //! ```
-//! let v: i32 = qjs::js!(1+2).unwrap().unwrap();
+//! use qjs::js;
+//!
+//! let v: i32 = js!(1+2).unwrap().unwrap();
 //!
 //! assert_eq!(v, 3);
+//! ```
+//!
+//! `js` macro can also convert a Javascript closure to a rust function.
+//!
+//! ```
+//! use qjs::js;
+//!
+//! let f = js!{ (name: &str) -> String => { return "hello " + name; } };
+//! let s: String = f("world").unwrap().unwrap();
+//!
+//! assert_eq!(s, "hello world");
 //! ```
 #[macro_use]
 extern crate log;
