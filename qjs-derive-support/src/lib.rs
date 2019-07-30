@@ -23,14 +23,49 @@ use syn::{
 
 pub fn js(input: TokenStream) -> Result<TokenStream> {
     match syn::parse2(input)? {
-        Item::Eval(eval) => {
-            let context = eval.context.map_or_else(
-                || quote! { qjs:: },
-                |WithContext { ident, .. }| quote! { #ident. },
+        Item::Eval(Eval { context, script }) => {
+            let context = context.map_or_else(
+                || {
+                    quote! {
+                        let rt = qjs::Runtime::new();
+                        let ctxt = qjs::Context::new(&rt);
+                    }
+                },
+                |WithContext { ident, .. }| {
+                    quote! {
+                        let ctxt = #ident;
+                    }
+                },
             );
-            let script = eval.script.to_string();
+            let mut vars = vec![];
+            let interpolated_script = interpolate(script, &mut vars)?.to_string();
+            let global = if vars.is_empty() {
+                None
+            } else {
+                Some(quote! { let global = ctxt.global_object(); })
+            };
+            let captures = vars.into_iter().enumerate().map(|(i, var)| match var {
+                Variable::Ident(name) => {
+                    quote! { global.set_property(stringify!(#name), #name); }
+                }
+                Variable::Expr(expr) => {
+                    let var = Ident::new(&format!("var{}", i), Span::call_site());
 
-            Ok(quote! { #context eval(#script) })
+                    quote! { global.set_property(#var, #expr); }
+                }
+            });
+
+            let expanded = quote! {{
+                #context
+                #global
+                #(#captures)*
+
+                ctxt.eval(#interpolated_script, qjs::Eval::GLOBAL)
+            }};
+
+            dbg!(expanded.to_string());
+
+            Ok(expanded)
         }
         Item::Closure(Closure {
             captures,
@@ -54,12 +89,18 @@ pub fn js(input: TokenStream) -> Result<TokenStream> {
                 })
                 .collect::<Vec<_>>();
 
+            let mut vars = vec![];
+            let interpolated_script = interpolate(script, &mut vars)?;
             let script = format!(
                 "({}) => {{ {} }}",
                 param_names.join(", "),
-                script.to_string()
+                interpolated_script.to_string()
             );
-
+            let global = if vars.is_empty() {
+                None
+            } else {
+                Some(quote! { let global = ctxt.global_object(); })
+            };
             let (output, output_ty) = if let Some(output) = output {
                 if let ReturnType::Type(rarrow, output_ty) = output {
                     (
@@ -84,10 +125,24 @@ pub fn js(input: TokenStream) -> Result<TokenStream> {
                 .collect::<Vec<_>>();
             let args = args.as_slice();
 
+            let captures = vars.into_iter().enumerate().map(|(i, var)| match var {
+                Variable::Ident(name) => {
+                    quote! { global.set_property(stringify!(#name), #name); }
+                }
+                Variable::Expr(expr) => {
+                    let var = Ident::new(&format!("var{}", i), Span::call_site());
+
+                    quote! { global.set_property(#var, #expr); }
+                }
+            });
+
             let expanded = quote! {
-                | #(#args),* | #output {
+                move | #(#args),* | #output {
                     let rt = qjs::Runtime::new();
                     let ctxt = qjs::Context::new(&rt);
+                    #global
+                    #(#captures)*
+
                     let func = ctxt.eval_script(#script, "<evalScript>", qjs::Eval::GLOBAL)?;
 
                     func.call(None, (#(#args),*))
@@ -106,7 +161,7 @@ pub fn js(input: TokenStream) -> Result<TokenStream> {
     }
 }
 
-pub enum Item {
+enum Item {
     Eval(Eval),
     Closure(Closure),
 }
@@ -121,7 +176,7 @@ impl Parse for Item {
     }
 }
 
-pub struct Eval {
+struct Eval {
     pub context: Option<WithContext>,
     pub script: TokenStream,
 }
@@ -139,7 +194,7 @@ impl Parse for Eval {
     }
 }
 
-pub struct WithContext {
+struct WithContext {
     pub ident: Ident,
     pub fat_arrow_token: FatArrow,
 }
@@ -153,7 +208,7 @@ impl Parse for WithContext {
     }
 }
 
-pub struct Closure {
+struct Closure {
     pub captures: Option<Captures>,
     pub paren_token: Paren,
     pub params: Punctuated<FnArg, Comma>,
@@ -199,7 +254,7 @@ impl Parse for Closure {
     }
 }
 
-pub struct Captures {
+struct Captures {
     pub bracket_token: Bracket,
     pub inputs: Punctuated<Ident, Comma>,
 }
@@ -215,12 +270,12 @@ impl Parse for Captures {
     }
 }
 
-pub enum Variable {
+enum Variable {
     Ident(Ident),
     Expr(Expr),
 }
 
-pub fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStream> {
+fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStream> {
     let mut output = TokenStream::new();
     let mut interpolating = None;
 
@@ -231,14 +286,12 @@ pub fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<Token
             {
                 interpolating = Some(punct.clone())
             }
-            TokenTree::Ident(ref ident) if interpolating.is_some() => {
-                let var = Ident::new(&format!("var{}", vars.len()), Span::call_site());
-
+            TokenTree::Ident(ref name) if interpolating.is_some() => {
                 output.extend(quote! {
-                    __scope.#var
+                    #name
                 });
 
-                vars.push(Variable::Ident(ident.clone()));
+                vars.push(Variable::Ident(name.clone()));
             }
             TokenTree::Group(ref group)
                 if interpolating.is_some() && group.delimiter() == Delimiter::Parenthesis =>
@@ -246,7 +299,7 @@ pub fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<Token
                 let var = Ident::new(&format!("var{}", vars.len()), Span::call_site());
 
                 output.extend(quote! {
-                    __scope.#var
+                    #var
                 });
 
                 vars.push(Variable::Expr(syn::parse2(group.stream())?));
@@ -381,7 +434,7 @@ mod tests {
             interpolate(TokenStream::from_str("print(#name)").unwrap(), &mut vars)
                 .unwrap()
                 .to_string(),
-            quote! { print(__scope.var0) }.to_string()
+            quote! { print(var0) }.to_string()
         );
 
         assert_eq!(
@@ -391,7 +444,7 @@ mod tests {
             )
             .unwrap()
             .to_string(),
-            quote! { print(__scope.var1) }.to_string()
+            quote! { print(var1) }.to_string()
         );
     }
 }

@@ -22,6 +22,20 @@
 //!
 //! assert_eq!(s, "hello world");
 //! ```
+//!
+//! Variable interpolation is done with `#var` (similar to `$var` in `macro_rules!` macros).
+//! This grabs the var variable that is currently in scope and inserts it in that location in the output tokens.
+//!
+//! ```
+//! use qjs::js;
+//!
+//! # let _ = pretty_env_logger::try_init();
+//!
+//! let f = |name| js!{ "hello " + #name };
+//! let s: String = f("world").unwrap().unwrap();
+//!
+//! assert_eq!(s, "hello world");
+//! ```
 #[macro_use]
 extern crate log;
 #[macro_use]
