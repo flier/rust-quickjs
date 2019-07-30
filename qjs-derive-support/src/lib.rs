@@ -21,7 +21,7 @@ use syn::{
     Expr, FnArg, Result, ReturnType, Type,
 };
 
-pub fn js(input: TokenStream) -> Result<TokenStream> {
+pub fn qjs(input: TokenStream) -> Result<TokenStream> {
     match syn::parse2(input)? {
         Item::Eval(Eval { context, script }) => {
             let context = context.map_or_else(

@@ -2,22 +2,22 @@
 //!
 //! # Examples
 //!
-//! `js` macro can evalute the Javascript code in an anonymouse context.
+//! `qjs` macro can evalute the Javascript code in an anonymouse context.
 //!
 //! ```
-//! use qjs::js;
+//! use qjs::qjs;
 //!
-//! let v: i32 = js!(1+2).unwrap().unwrap();
+//! let v: i32 = qjs!(1+2).unwrap().unwrap();
 //!
 //! assert_eq!(v, 3);
 //! ```
 //!
-//! `js` macro can also convert a Javascript closure to a rust function.
+//! `qjs` macro can also convert a Javascript closure to a rust function.
 //!
 //! ```
-//! use qjs::js;
+//! use qjs::qjs;
 //!
-//! let f = js!{ (name: &str) -> String => { return "hello " + name; } };
+//! let f = qjs!{ (name: &str) -> String => { return "hello " + name; } };
 //! let s: String = f("world").unwrap().unwrap();
 //!
 //! assert_eq!(s, "hello world");
@@ -27,11 +27,11 @@
 //! This grabs the var variable that is currently in scope and inserts it in that location in the output tokens.
 //!
 //! ```
-//! use qjs::js;
+//! use qjs::qjs;
 //!
 //! # let _ = pretty_env_logger::try_init();
 //!
-//! let f = |name| js!{ "hello " + #name };
+//! let f = |name| qjs!{ "hello " + #name };
 //! let s: String = f("world").unwrap().unwrap();
 //!
 //! assert_eq!(s, "hello world");
@@ -53,7 +53,7 @@ pub use qjs_sys as ffi;
 
 use proc_macro_hack::proc_macro_hack;
 #[proc_macro_hack]
-pub use qjs_derive::js;
+pub use qjs_derive::qjs;
 
 #[macro_use]
 mod macros;
