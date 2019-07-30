@@ -2,13 +2,12 @@
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate if_chain;
 
 #[cfg(test)]
 #[macro_use]
 extern crate matches;
-#[cfg(test)]
-#[macro_use]
-extern crate if_chain;
 
 use proc_macro2::{Delimiter, Group, Ident, Spacing, Span, TokenStream, TokenTree};
 use quote::quote;
@@ -42,16 +41,22 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
             let global = if vars.is_empty() {
                 None
             } else {
-                Some(quote! { let global = ctxt.global_object(); })
+                Some(quote! {
+                    let global = ctxt.global_object();
+                })
             };
             let captures = vars.into_iter().enumerate().map(|(i, var)| match var {
                 Variable::Ident(name) => {
-                    quote! { global.set_property(stringify!(#name), #name); }
+                    quote! {
+                        global.set_property(stringify!(#name), #name);
+                    }
                 }
                 Variable::Expr(expr) => {
                     let var = Ident::new(&format!("var{}", i), Span::call_site());
 
-                    quote! { global.set_property(#var, #expr); }
+                    quote! {
+                        global.set_property(#var, #expr);
+                    }
                 }
             });
 
@@ -99,10 +104,14 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
             let global = if vars.is_empty() {
                 None
             } else {
-                Some(quote! { let global = ctxt.global_object(); })
+                Some(quote! {
+                    let global = ctxt.global_object();
+                })
             };
-            let (output, output_ty) = if let Some(output) = output {
-                if let ReturnType::Type(rarrow, output_ty) = output {
+            let (output, output_ty) = if_chain! {
+                if let Some(output) = output;
+                if let ReturnType::Type(rarrow, output_ty) = output;
+                then {
                     (
                         ReturnType::Type(
                             rarrow,
@@ -115,8 +124,6 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 } else {
                     (ReturnType::Default, parse_quote! { () })
                 }
-            } else {
-                (ReturnType::Default, parse_quote! { () })
             };
 
             let args = param_names
@@ -287,9 +294,7 @@ fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStre
                 interpolating = Some(punct.clone())
             }
             TokenTree::Ident(ref name) if interpolating.is_some() => {
-                output.extend(quote! {
-                    #name
-                });
+                output.extend(quote! { #name });
 
                 vars.push(Variable::Ident(name.clone()));
             }
@@ -298,9 +303,7 @@ fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStre
             {
                 let var = Ident::new(&format!("var{}", vars.len()), Span::call_site());
 
-                output.extend(quote! {
-                    #var
-                });
+                output.extend(quote! { #var });
 
                 vars.push(Variable::Expr(syn::parse2(group.stream())?));
             }
