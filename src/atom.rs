@@ -53,7 +53,7 @@ impl Into<ffi::JSAtom> for Atom<'_> {
 
 impl Clone for Atom<'_> {
     fn clone(&self) -> Self {
-        self.ctxt.clone_atom(self.inner)
+        self.ctxt.clone_atom(**self)
     }
 }
 
@@ -74,22 +74,22 @@ impl fmt::Debug for Atom<'_> {
 impl Atom<'_> {
     /// Free an `Atom` reference.
     pub fn free(&self) {
-        self.ctxt.free_atom(self.inner)
+        self.ctxt.free_atom(**self)
     }
 
     /// Convert an `Atom` to a Javascript `Value`.
     pub fn to_value(&self) -> Local<Value> {
-        self.ctxt.atom_to_value(self.inner)
+        self.ctxt.atom_to_value(**self)
     }
 
     /// Convert an `Atom` to a Javascript `String`.
     pub fn to_str(&self) -> Local<Value> {
-        self.ctxt.atom_to_string(self.inner)
+        self.ctxt.atom_to_string(**self)
     }
 
     /// Convert an `Atom` to a `Local<&CStr>`.
-    pub fn to_cstr(&self) -> Local<&CStr> {
-        self.ctxt.atom_to_cstr(self.inner)
+    pub fn to_cstr(&self) -> CString {
+        self.ctxt.atom_to_cstring(**self)
     }
 }
 
@@ -108,7 +108,7 @@ impl ContextRef {
     fn bind_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
         Local {
             ctxt: self,
-            inner: atom,
+            inner: Some(atom),
         }
     }
 
@@ -144,9 +144,16 @@ impl ContextRef {
         self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) })
     }
 
-    /// Convert an `Atom` to a `&CStr`.
-    pub fn atom_to_cstr(&self, atom: ffi::JSAtom) -> Local<&CStr> {
-        self.bind(unsafe { CStr::from_ptr(ffi::JS_AtomToCString(self.as_ptr(), atom)) })
+    /// Convert an `Atom` to a `CString`.
+    pub fn atom_to_cstring(&self, atom: ffi::JSAtom) -> CString {
+        unsafe {
+            let p = ffi::JS_AtomToCString(self.as_ptr(), atom);
+            let s = CStr::from_ptr(p).to_owned();
+
+            ffi::JS_FreeCString(self.as_ptr(), p);
+
+            s
+        }
     }
 }
 

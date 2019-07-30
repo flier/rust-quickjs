@@ -69,7 +69,7 @@ impl Value {
 
 impl Local<'_, Value> {
     pub fn get_opaque<T>(&self, class_id: ClassId) -> *mut T {
-        self.ctxt.get_opaque(&self.inner, class_id)
+        self.ctxt.get_opaque(self, class_id)
     }
 }
 

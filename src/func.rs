@@ -117,15 +117,15 @@ tuple_args! { A B C D E F G H I J K L M N O P Q R S T }
 
 impl<'a> Local<'a, Value> {
     pub fn call<T: Args>(&self, this: Option<&Value>, args: T) -> Result<Local<Value>, Error> {
-        self.ctxt.call(&self.inner, this, args)
+        self.ctxt.call(self, this, args)
     }
 
     pub fn invoke<N: NewAtom, T: Args>(&self, atom: N, args: T) -> Result<Local<Value>, Error> {
-        self.ctxt.invoke(&self.inner, atom, args)
+        self.ctxt.invoke(self, atom, args)
     }
 
     pub fn call_constructor<T: Args>(&self, args: T) -> Result<Local<Value>, Error> {
-        self.ctxt.call_constructor(&self.inner, args)
+        self.ctxt.call_constructor(self, args)
     }
 
     pub fn call_constructor2<T: Args>(
@@ -133,7 +133,7 @@ impl<'a> Local<'a, Value> {
         new_target: Option<&Value>,
         args: T,
     ) -> Result<Local<Value>, Error> {
-        self.ctxt.call_constructor2(&self.inner, new_target, args)
+        self.ctxt.call_constructor2(self, new_target, args)
     }
 }
 

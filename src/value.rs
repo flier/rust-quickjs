@@ -1,7 +1,7 @@
 #![allow(clippy::cast_lossless)]
 
 use std::cmp::Ordering;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
@@ -116,85 +116,77 @@ impl RuntimeRef {
 
 impl fmt::Display for Local<'_, Value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_cstr().unwrap().to_string_lossy().to_string())
+        f.write_str(&self.to_cstring().unwrap().to_string_lossy().to_string())
     }
 }
 
 impl fmt::Debug for Local<'_, Value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_tuple("Value")
-            .field(&self.to_cstr().unwrap().to_string_lossy().to_string())
-            .finish()
+        f.debug_tuple("Value").field(&self.to_string()).finish()
     }
 }
 
 impl Clone for Local<'_, Value> {
     fn clone(&self) -> Self {
-        self.ctxt.clone_value(&self.inner)
+        self.ctxt.clone_value(self)
     }
 }
 
 impl<'a> Local<'a, Value> {
     pub fn check_undefined(self) -> Option<Local<'a, Value>> {
-        if self.inner.is_undefined() {
+        if self.is_undefined() {
             None
         } else {
             Some(self)
         }
     }
 
-    pub fn free(mut self) {
-        let v = self.take();
-
-        self.ctxt.free_value(v)
-    }
-
     pub fn is_error(&self) -> bool {
-        self.ctxt.is_error(&self.inner)
+        self.ctxt.is_error(self)
     }
 
     pub fn is_function(&self) -> bool {
-        self.ctxt.is_function(&self.inner)
+        self.ctxt.is_function(self)
     }
 
     pub fn is_constructor(&self) -> bool {
-        self.ctxt.is_constructor(&self.inner)
+        self.ctxt.is_constructor(self)
     }
 
     pub fn to_bool(&self) -> Option<bool> {
-        self.ctxt.to_bool(&self.inner)
+        self.ctxt.to_bool(self)
     }
 
     pub fn to_int32(&self) -> Option<i32> {
-        self.ctxt.to_int32(&self.inner)
+        self.ctxt.to_int32(self)
     }
 
     pub fn to_int64(&self) -> Option<i64> {
-        self.ctxt.to_int64(&self.inner)
+        self.ctxt.to_int64(self)
     }
 
     pub fn to_index(&self) -> Option<u64> {
-        self.ctxt.to_index(&self.inner)
+        self.ctxt.to_index(self)
     }
 
     pub fn to_float64(&self) -> Option<f64> {
-        self.ctxt.to_float64(&self.inner)
+        self.ctxt.to_float64(self)
     }
 
     pub fn to_str(&self) -> Local<Value> {
-        self.ctxt.bind(self.ctxt.to_str(&self.inner))
+        self.ctxt.bind(self.ctxt.to_str(self))
     }
 
     pub fn to_property_key(&self) -> Local<Value> {
-        self.ctxt.bind(self.ctxt.to_property_key(&self.inner))
+        self.ctxt.bind(self.ctxt.to_property_key(self))
     }
 
-    pub fn to_cstr(&self) -> Option<Local<&CStr>> {
-        self.ctxt.to_cstr(&self.inner)
+    pub fn to_cstring(&self) -> Option<CString> {
+        self.ctxt.to_cstring(self)
     }
 
     pub fn instance_of(&self, obj: &Value) -> Result<bool, Error> {
-        self.ctxt.is_instance_of(&self.inner, obj)
+        self.ctxt.is_instance_of(self, obj)
     }
 }
 
@@ -334,7 +326,7 @@ impl ContextRef {
     }
 
     /// Convert Javascript String to C UTF-8 encoded strings.
-    pub fn to_cstr(&self, val: &Value) -> Option<Local<&CStr>> {
+    pub fn to_cstring(&self, val: &Value) -> Option<CString> {
         let mut len = 0;
 
         unsafe {
@@ -343,38 +335,21 @@ impl ContextRef {
             if p.is_null() {
                 None
             } else {
-                Some(
-                    self.bind(CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
-                        p as *const _,
-                        len as usize + 1,
-                    ))),
-                )
+                let s = CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
+                    p as *const _,
+                    len as usize + 1,
+                ))
+                .to_owned();
+
+                ffi::JS_FreeCString(self.as_ptr(), p);
+
+                Some(s)
             }
         }
     }
 
     pub fn is_instance_of(&self, val: &Value, obj: &Value) -> Result<bool, Error> {
         self.check_bool(unsafe { ffi::JS_IsInstanceOf(self.as_ptr(), val.raw(), obj.raw()) })
-    }
-}
-
-impl<'a> Bindable<'a> for &'a CStr {
-    type Output = &'a CStr;
-
-    fn bind_to(self, _ctxt: &ContextRef) -> Self::Output {
-        self
-    }
-}
-
-impl Unbindable for &CStr {
-    fn unbind(ctxt: &ContextRef, s: &CStr) {
-        unsafe { ffi::JS_FreeCString(ctxt.as_ptr(), s.as_ptr()) }
-    }
-}
-
-impl fmt::Display for Local<'_, &CStr> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_string_lossy())
     }
 }
 
@@ -577,7 +552,7 @@ impl ExtractValue for f64 {
 
 impl ExtractValue for String {
     fn extract_value(v: &Local<Value>) -> Option<Self> {
-        v.to_cstr().map(|s| s.to_string_lossy().to_string())
+        v.to_cstring().map(|s| s.to_string_lossy().to_string())
     }
 }
 

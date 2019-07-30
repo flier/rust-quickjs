@@ -25,7 +25,7 @@ bitflags! {
 
 impl Local<'_, Value> {
     pub fn write_bytecode(&self) -> Result<Vec<u8>, Error> {
-        self.ctxt.write_object(&self.inner, WriteObj::BYTECODE)
+        self.ctxt.write_object(self, WriteObj::BYTECODE)
     }
 }
 

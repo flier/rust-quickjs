@@ -74,7 +74,7 @@ impl GetProperty for u32 {
 impl GetProperty for Local<'_, ffi::JSAtom> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
         ctxt.bind(unsafe {
-            ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.raw(), self.inner, this.raw(), FALSE)
+            ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.raw(), **self, this.raw(), FALSE)
         })
         .check_undefined()
     }
@@ -158,7 +158,7 @@ impl SetProperty for Local<'_, ffi::JSAtom> {
             ffi::JS_SetPropertyInternal(
                 ctxt.as_ptr(),
                 this.raw(),
-                self.inner,
+                **self,
                 val.new_value(ctxt),
                 ffi::JS_PROP_THROW as i32,
             )
@@ -324,7 +324,7 @@ impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
             ffi::JS_DefinePropertyValue(
                 ctxt.as_ptr(),
                 this.raw(),
-                self.inner,
+                *self,
                 val.new_value(ctxt),
                 flags.bits as i32,
             )
@@ -381,7 +381,7 @@ where
 impl<'a> Local<'a, Value> {
     /// Get a property value on an object.
     pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
-        self.ctxt.get_property(&self.inner, prop)
+        self.ctxt.get_property(self, prop)
     }
 
     /// Set a property value on an object.
@@ -390,19 +390,19 @@ impl<'a> Local<'a, Value> {
         prop: T,
         val: V,
     ) -> Result<bool, Error> {
-        self.ctxt.set_property(&self.inner, prop, val)
+        self.ctxt.set_property(self, prop, val)
     }
 
     /// Check if a property on an object.
     pub fn has_property<T: HasProperty>(&self, prop: T) -> Result<bool, Error> {
-        self.ctxt.has_property(&self.inner, prop)
+        self.ctxt.has_property(self, prop)
     }
 
     /// Delete a property on an object.
     ///
     /// It returns a `bool` indicating whether or not the property was successfully deleted.
     pub fn delete_property<T: DeleteProperty>(&self, prop: T) -> Result<bool, Error> {
-        self.ctxt.delete_property(&self.inner, prop)
+        self.ctxt.delete_property(self, prop)
     }
 
     /// Defines a new property directly on an object, or modifies an existing property on an object.
@@ -415,7 +415,7 @@ impl<'a> Local<'a, Value> {
         flags: Prop,
     ) -> Result<bool, Error> {
         self.ctxt
-            .define_property(&self.inner, prop, val, getter, setter, flags)
+            .define_property(self, prop, val, getter, setter, flags)
     }
 
     /// Defines a new property with value directly on an object,
@@ -426,8 +426,7 @@ impl<'a> Local<'a, Value> {
         val: V,
         flags: Prop,
     ) -> Result<bool, Error> {
-        self.ctxt
-            .define_property_value(&self.inner, prop, val, flags)
+        self.ctxt.define_property_value(self, prop, val, flags)
     }
 
     /// Defines a new property with getter and setter directly on an object,
@@ -440,17 +439,17 @@ impl<'a> Local<'a, Value> {
         flags: Prop,
     ) -> Result<bool, Error> {
         self.ctxt
-            .define_property_get_set(&self.inner, prop, getter, setter, flags)
+            .define_property_get_set(self, prop, getter, setter, flags)
     }
 
     /// Check if an object is extensible (whether it can have new properties added to it).
     pub fn is_extensible(&self) -> Result<bool, Error> {
-        self.ctxt.is_extensible(&self.inner)
+        self.ctxt.is_extensible(self)
     }
 
     /// Prevents new properties from ever being added to an object (i.e. prevents future extensions to the object).
     pub fn prevent_extensions(&self) -> Result<bool, Error> {
-        self.ctxt.prevent_extensions(&self.inner)
+        self.ctxt.prevent_extensions(self)
     }
 }
 

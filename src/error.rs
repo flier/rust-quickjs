@@ -161,7 +161,7 @@ impl NewValue for ErrorKind {
 
 impl<'a> Local<'a, Value> {
     pub fn ok(self) -> Result<Local<'a, Value>, Error> {
-        if self.inner.is_exception() {
+        if self.is_exception() {
             let err = self.ctxt.take_exception()?;
 
             trace!("-> Err({:?})", err);

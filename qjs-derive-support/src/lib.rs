@@ -46,16 +46,18 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 })
             };
             let captures = vars.into_iter().enumerate().map(|(i, var)| match var {
-                Variable::Ident(name) => {
+                Variable::Ident(ident) => {
+                    let name = ident.to_string();
+
                     quote! {
-                        global.set_property(stringify!(#name), #name);
+                        global.set_property(#name, #ident);
                     }
                 }
                 Variable::Expr(expr) => {
-                    let var = Ident::new(&format!("var{}", i), Span::call_site());
+                    let name = format!("var{}", i);
 
                     quote! {
-                        global.set_property(#var, #expr);
+                        global.set_property(#name, #expr);
                     }
                 }
             });
@@ -294,6 +296,8 @@ fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStre
                 interpolating = Some(punct.clone())
             }
             TokenTree::Ident(ref name) if interpolating.is_some() => {
+                let _ = interpolating.take();
+
                 output.extend(quote! { #name });
 
                 vars.push(Variable::Ident(name.clone()));
@@ -301,6 +305,7 @@ fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStre
             TokenTree::Group(ref group)
                 if interpolating.is_some() && group.delimiter() == Delimiter::Parenthesis =>
             {
+                let _ = interpolating.take();
                 let var = Ident::new(&format!("var{}", vars.len()), Span::call_site());
 
                 output.extend(quote! { #var });

@@ -36,6 +36,25 @@
 //!
 //! assert_eq!(s, "hello world");
 //! ```
+//!
+//! The primitive types, including `bool`, `i32`, `i64`, `u64`, `f64`, `String` etc,
+//! and other type which implements `NewValue` trait could be used in the variable interpolation.
+//!
+//! The function which parameters implements `ExtractValue` trait and output type implements `NewValue` trait
+//! can also be used in the variable interpolation.
+//!
+//! ```
+//! use qjs::qjs;
+//!
+//! fn hello(name: String) -> String {
+//!     format!("hello {}", name)
+//! }
+//!
+//! let hello: fn(String) -> String = hello;
+//! //let s: String = qjs!{ #hello ("world") }.unwrap().unwrap();
+//!
+//! // assert_eq!(s, "hello world");
+//! ```
 #[macro_use]
 extern crate log;
 #[macro_use]

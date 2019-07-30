@@ -8,7 +8,7 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{
     ffi::{self, JSCFunctionEnum::*},
-    Args, ContextRef, Local, NewValue, Prop, Value,
+    Args, ContextRef, ExtractValue, Local, NewValue, Prop, Value,
 };
 
 /// `CFunction` is a shortcut to easily add functions, setters and getters properties to a given object.
@@ -179,9 +179,87 @@ impl ContextRef {
     }
 }
 
+macro_rules! new_func_value {
+    () => {
+        impl<Ret: NewValue> NewValue for fn() -> Ret {
+            fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+                unsafe extern "C" fn stub<Ret: NewValue>(
+                    ctx: *mut ffi::JSContext,
+                    _this_val: ffi::JSValue,
+                    _argc: c_int,
+                    _argv: *mut ffi::JSValue,
+                    _magic: c_int,
+                    data: *mut ffi::JSValue,
+                ) -> ffi::JSValue {
+                    let ctxt = ContextRef::from_ptr(ctx);
+                    let data = ptr::NonNull::new_unchecked(data);
+                    let func = ctxt.get_userdata_unchecked::<fn() -> Ret>(data.cast().as_ref());
+                    let func = *func.as_ref();
+
+                    func().new_value(ctxt).into()
+                }
+
+                ctxt.new_c_function_data(stub::<Ret>, 0, 0, ctxt.new_userdata(self))
+                    .unwrap()
+                    .into_inner()
+                    .into()
+            }
+        }
+    };
+
+    ($($Arg:ident)+) => {
+        impl<Ret: NewValue, $($Arg : ExtractValue),*> NewValue for fn($( $Arg ),*) -> Ret {
+            fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
+                unsafe extern "C" fn stub<Ret: NewValue, $($Arg : ExtractValue),*>(
+                    ctx: *mut ffi::JSContext,
+                    _this_val: ffi::JSValue,
+                    argc: c_int,
+                    argv: *mut ffi::JSValue,
+                    _magic: c_int,
+                    data: *mut ffi::JSValue,
+                ) -> ffi::JSValue {
+                    let ctxt = ContextRef::from_ptr(ctx);
+                    let data = ptr::NonNull::new_unchecked(data);
+                    let func = ctxt.get_userdata_unchecked::<fn($( $Arg ),*) -> Ret>(data.cast().as_ref());
+                    let func = *func.as_ref();
+                    let args = slice::from_raw_parts(argv, argc as usize);
+                    let mut iter = args.iter();
+
+                    func($({
+                        let value = ctxt.bind(*iter.next().unwrap());
+                        <$Arg as ExtractValue>::extract_value(&value).unwrap()
+                    }),*)
+                        .new_value(&ctxt)
+                        .into()
+                }
+
+                ctxt.new_c_function_data(stub::<Ret, $($Arg),*>, 0, 0, ctxt.new_userdata(self))
+                    .unwrap()
+                    .into_inner()
+                    .into()
+            }
+        }
+    }
+}
+
+new_func_value! {}
+new_func_value! { T0 }
+new_func_value! { T0 T1 }
+new_func_value! { T0 T1 T2 }
+new_func_value! { T0 T1 T2 T3 }
+new_func_value! { T0 T1 T2 T3 T4 }
+new_func_value! { T0 T1 T2 T3 T4 T5 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 }
+new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 }
+
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Eval, Runtime};
+    use crate::{Context, Eval, ExtractValue, Runtime};
 
     #[test]
     fn cfunc() {
@@ -191,7 +269,12 @@ mod tests {
         let ctxt = Context::new(&rt);
         let hello = ctxt
             .new_c_function(
-                |ctxt, _this, args| format!("hello {}", ctxt.to_cstr(&args[0]).unwrap()),
+                |ctxt, _this, args| {
+                    format!(
+                        "hello {}",
+                        ctxt.to_cstring(&args[0]).unwrap().to_string_lossy()
+                    )
+                },
                 Some("hello"),
                 1,
             )
@@ -203,5 +286,23 @@ mod tests {
             ctxt.eval("hello('world')", Eval::GLOBAL).unwrap(),
             Some("hello world".to_owned())
         );
+    }
+
+    #[test]
+    fn new_value() {
+        let _ = pretty_env_logger::try_init();
+
+        let rt = Runtime::new();
+        let ctxt = Context::new(&rt);
+
+        let hello: fn(String) -> String = hello;
+        // let func = ctxt.bind(hello);
+        // let res = func.call(None, "world").unwrap();
+
+        // assert_eq!(String::extract_value(&res).unwrap(), "hello world");
+    }
+
+    pub fn hello(name: String) -> String {
+        format!("hello {}", name)
     }
 }
