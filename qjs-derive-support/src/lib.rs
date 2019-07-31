@@ -12,7 +12,7 @@ extern crate matches;
 use std::fmt;
 
 use proc_macro2::{Delimiter, Group, Ident, Spacing, Span, TokenStream, TokenTree};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream},
@@ -85,7 +85,7 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 ctxt.eval(#interpolated_script, qjs::Eval::GLOBAL)
             }};
 
-            trace!("expandedscript:\n{}", expanded.to_string());
+            trace!("generated:\n{}", expanded.to_string());
 
             Ok(expanded)
         }
@@ -96,6 +96,14 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
             script,
             ..
         }) => {
+            trace!(
+                "convert closure to function: {} ({}) {} => {{ {} }}",
+                quote! { #captures }.to_string(),
+                quote! { #params }.to_string(),
+                quote! { #output }.to_string(),
+                script.to_string(),
+            );
+
             let param_names = params
                 .iter()
                 .flat_map(|param| match param {
@@ -178,7 +186,7 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 }
             };
 
-            trace!("expanded script:\n{}", expanded.to_string());
+            trace!("generated:\n{}", expanded.to_string());
 
             Ok(expanded)
         }
@@ -290,6 +298,17 @@ impl Parse for Captures {
         Ok(Captures {
             bracket_token: bracketed!(content in input),
             inputs: content.parse_terminated(Ident::parse)?,
+        })
+    }
+}
+
+impl ToTokens for Captures {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.bracket_token.surround(tokens, |tokens| {
+            for input in self.inputs.pairs() {
+                input.value().to_tokens(tokens);
+                input.punct().to_tokens(tokens);
+            }
         })
     }
 }
