@@ -9,6 +9,8 @@ extern crate if_chain;
 #[macro_use]
 extern crate matches;
 
+use std::fmt;
+
 use proc_macro2::{Delimiter, Group, Ident, Spacing, Span, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
@@ -23,6 +25,15 @@ use syn::{
 pub fn qjs(input: TokenStream) -> Result<TokenStream> {
     match syn::parse2(input)? {
         Item::Eval(Eval { context, script }) => {
+            trace!(
+                "eval script with {} context: {}",
+                context
+                    .as_ref()
+                    .map_or("anonymous".to_owned(), |WithContext { ident, .. }| ident
+                        .to_string()),
+                script.to_string(),
+            );
+
             let context = context.map_or_else(
                 || {
                     quote! {
@@ -38,6 +49,10 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
             );
             let mut vars = vec![];
             let interpolated_script = interpolate(script, &mut vars)?.to_string();
+
+            trace!("found {} variables: {:?}", vars.len(), vars);
+            trace!("interpolated script: {}", interpolated_script.to_string());
+
             let global = if vars.is_empty() {
                 None
             } else {
@@ -70,7 +85,7 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 ctxt.eval(#interpolated_script, qjs::Eval::GLOBAL)
             }};
 
-            dbg!(expanded.to_string());
+            trace!("expandedscript:\n{}", expanded.to_string());
 
             Ok(expanded)
         }
@@ -163,7 +178,7 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
                 }
             };
 
-            dbg!(expanded.to_string());
+            trace!("expanded script:\n{}", expanded.to_string());
 
             Ok(expanded)
         }
@@ -282,6 +297,21 @@ impl Parse for Captures {
 enum Variable {
     Ident(Ident),
     Expr(Expr),
+}
+
+impl fmt::Debug for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Variable::Ident(ident) => f
+                .debug_tuple("Variable::Ident")
+                .field(&ident.to_string())
+                .finish(),
+            Variable::Expr(expr) => f
+                .debug_tuple("Variable::Expr")
+                .field(&quote! { #expr }.to_string())
+                .finish(),
+        }
+    }
 }
 
 fn interpolate(input: TokenStream, vars: &mut Vec<Variable>) -> Result<TokenStream> {
