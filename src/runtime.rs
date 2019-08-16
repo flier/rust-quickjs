@@ -1,4 +1,5 @@
 use std::mem;
+use std::mem::MaybeUninit;
 use std::os::raw::{c_int, c_void};
 use std::ptr::{null_mut, NonNull};
 
@@ -96,12 +97,12 @@ impl RuntimeRef {
 
     /// Compute memory used by various object types.
     pub fn memory_usage(&self) -> MemoryUsage {
+        let mut usage = MaybeUninit::<ffi::JSMemoryUsage>::uninit();
+
         unsafe {
-            let mut usage: ffi::JSMemoryUsage = mem::zeroed();
+            ffi::JS_ComputeMemoryUsage(self.as_ptr(), usage.as_mut_ptr());
 
-            ffi::JS_ComputeMemoryUsage(self.as_ptr(), &mut usage);
-
-            usage
+            usage.assume_init()
         }
     }
 
