@@ -14,13 +14,7 @@ pub trait NewAtom {
 
 impl<'a> NewAtom for &'a str {
     fn new_atom(self, context: &ContextRef) -> ffi::JSAtom {
-        unsafe {
-            ffi::JS_NewAtomLen(
-                context.as_ptr(),
-                self.as_ptr() as *const _,
-                self.len() as i32,
-            )
-        }
+        unsafe { ffi::JS_NewAtomLen(context.as_ptr(), self.as_ptr() as *const _, self.len()) }
     }
 }
 

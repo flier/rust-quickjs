@@ -7,7 +7,7 @@ use std::process::Command;
 use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 
-const QUICKJS_SRC: &str = "quickjs-2019-07-28.tar.xz";
+const QUICKJS_SRC: &str = "quickjs-2019-08-10.tar.xz";
 
 lazy_static! {
     static ref OUT_DIR: PathBuf = env::var_os("OUT_DIR").expect("OUT_DIR").into();

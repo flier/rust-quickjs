@@ -173,6 +173,11 @@ impl<'a> Local<'a, Value> {
         self.ctxt.to_float64(self)
     }
 
+    #[cfg(feature = "bignum")]
+    pub fn to_bigint64(&self) -> Option<i64> {
+        self.ctxt.to_bigint64(self)
+    }
+
     pub fn to_str(&self) -> Local<Value> {
         self.ctxt.bind(self.ctxt.to_str(self))
     }
@@ -273,6 +278,16 @@ impl ContextRef {
         Value(mkval(JS_TAG_CATCH_OFFSET, off))
     }
 
+    #[cfg(feature = "bignum")]
+    pub fn new_bigint64(&self, n: i64) -> Value {
+        Value(unsafe { ffi::JS_NewBigInt64(self.as_ptr(), n) })
+    }
+
+    #[cfg(feature = "bignum")]
+    pub fn new_biguint64(&self, n: u64) -> Value {
+        Value(unsafe { ffi::JS_NewBigUint64(self.as_ptr(), n) })
+    }
+
     pub fn to_bool(&self, val: &Value) -> Option<bool> {
         match unsafe { ffi::JS_ToBool(self.as_ptr(), val.0) } {
             ERR => None,
@@ -317,6 +332,16 @@ impl ContextRef {
         }
     }
 
+    #[cfg(feature = "bignum")]
+    pub fn to_bigint64(&self, val: &Value) -> Option<i64> {
+        let mut n = 0;
+
+        match unsafe { ffi::JS_ToBigInt64(self.as_ptr(), &mut n, val.0) } {
+            ERR => None,
+            _ => Some(n),
+        }
+    }
+
     pub fn to_str(&self, val: &Value) -> Value {
         Value(unsafe { ffi::JS_ToString(self.as_ptr(), val.0) })
     }
@@ -330,7 +355,7 @@ impl ContextRef {
         let mut len = 0;
 
         unsafe {
-            let p = ffi::JS_ToCStringLen(self.as_ptr(), &mut len, val.0, FALSE);
+            let p = ffi::JS_ToCStringLen2(self.as_ptr(), &mut len, val.0, FALSE);
 
             if p.is_null() {
                 None
@@ -416,7 +441,11 @@ impl NewValue for u32 {
 
 impl NewValue for u64 {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-        (self as i64).new_value(ctxt)
+        if cfg!(feature = "bignum") {
+            unsafe { ffi::JS_NewBigUint64(ctxt.as_ptr(), self) }
+        } else {
+            (self as i64).new_value(ctxt)
+        }
     }
 }
 
@@ -440,7 +469,11 @@ impl NewValue for i32 {
 
 impl NewValue for i64 {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-        unsafe { ffi::JS_NewInt64(ctxt.as_ptr(), self) }
+        if cfg!(feature = "bignum") {
+            unsafe { ffi::JS_NewBigInt64(ctxt.as_ptr(), self) }
+        } else {
+            unsafe { ffi::JS_NewInt64(ctxt.as_ptr(), self) }
+        }
     }
 }
 
@@ -464,7 +497,7 @@ impl NewValue for String {
 
 impl<'a> NewValue for &'a str {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-        unsafe { ffi::JS_NewStringLen(ctxt.as_ptr(), self.as_ptr() as *const _, self.len() as i32) }
+        unsafe { ffi::JS_NewStringLen(ctxt.as_ptr(), self.as_ptr() as *const _, self.len()) }
     }
 }
 
