@@ -389,24 +389,60 @@ mod tests {
     #[test]
     fn javascript() {
         assert_eq!(
-            js(quote! { 1+2 }).unwrap().to_string(),
-            quote! { qjs::eval("1 + 2") }.to_string(),
-        );
-        assert_eq!(
-            js(quote! { ctxt => 1+2 }).unwrap().to_string(),
-            quote! { ctxt.eval("1 + 2") }.to_string(),
-        );
-
-        assert_eq!(
-            js(quote! { () => 1+2 }).unwrap().to_string(),
-            quote! { | | { qjs::eval("function() { 1 + 2 }") } }.to_string()
+            qjs(quote! { 1+2 }).unwrap().to_string(),
+            quote! {{
+                let rt = qjs::Runtime::new();
+                let ctxt = qjs::Context::new(&rt);
+                ctxt.eval("1 + 2", qjs::Eval::GLOBAL)
+            }}
+            .to_string(),
         );
 
         assert_eq!(
-            js(quote! { (n: usize) -> usize => { n+1 } })
+            qjs(quote! { ctxt => 1+2 }).unwrap().to_string(),
+            quote! {{
+                let ctxt = ctxt;
+                ctxt.eval("1 + 2", qjs::Eval::GLOBAL)
+            }}
+            .to_string(),
+        );
+
+        assert_eq!(
+            qjs(quote! { () => 1+2 }).unwrap().to_string(),
+            quote! {move | | {
+                let rt = qjs::Runtime::new();
+                let ctxt = qjs::Context::new(&rt);
+                let func = ctxt.eval_script("() => { 1 + 2 }", "<evalScript>", qjs::Eval::GLOBAL)?;
+                func.call(None, ()).map(|v|
+                    if v.is_undefined() {
+                        None
+                    } else {
+                        <() as qjs::ExtractValue>::extract_value(&v)
+                    }
+                )
+            }}
+            .to_string()
+        );
+
+        assert_eq!(
+            qjs(quote! { (n: usize) -> usize => { n+1 } })
                 .unwrap()
                 .to_string(),
-            quote! { |n: usize| -> usize { qjs::eval("function(n) { n + 1 }") } }.to_string()
+            quote! {
+                move |n| -> Result<Option<usize>, failure::Error> {
+                    let rt = qjs::Runtime::new();
+                    let ctxt = qjs::Context::new(&rt);
+                    let func = ctxt.eval_script("(n) => { n + 1 }", "<evalScript>", qjs::Eval::GLOBAL)?;
+                    func.call(None, (n)).map(|v|
+                        if v.is_undefined() {
+                            None
+                        } else {
+                            <usize as qjs::ExtractValue>::extract_value(&v)
+                        }
+                    )
+                }
+            }
+            .to_string()
         );
     }
 
@@ -439,19 +475,21 @@ mod tests {
         let inputs = c.captures.unwrap().inputs;
 
         assert_eq!(inputs.len(), 1);
-        assert_matches!(
-            inputs.first().unwrap().value().to_string().as_str(),
-            "print"
-        );
+        assert_matches!(inputs.first().unwrap().to_string().as_str(), "print");
 
         assert_eq!(c.params.len(), 1);
-        assert_matches!(
-            c.params.first().unwrap().value(),
-            FnArg::Captured(syn::ArgCaptured {
-                pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
-                ty: syn::Type::Path(syn::TypePath { path, ..}),..
-            }) if ident == "n" && path.is_ident("usize")
-        );
+
+        if_chain! {
+            if let syn::FnArg::Typed(syn::PatType { pat, ty, .. }) = c.params.first().unwrap();
+            if let syn::Pat::Ident(syn::PatIdent { ident, .. }) = &**pat;
+            if let syn::Type::Path(syn::TypePath { path, ..}) = &**ty;
+            then {
+                assert_eq!(ident, "n");
+                assert!(path.is_ident("usize"));
+            } else {
+                panic!("Whoops")
+            }
+        }
 
         let ty = c.output.unwrap();
         if_chain! {
@@ -493,7 +531,7 @@ mod tests {
             interpolate(TokenStream::from_str("print(#name)").unwrap(), &mut vars)
                 .unwrap()
                 .to_string(),
-            quote! { print(var0) }.to_string()
+            quote! { print(name) }.to_string()
         );
 
         assert_eq!(
