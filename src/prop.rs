@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use std::mem::MaybeUninit;
 
 use failure::{format_err, Error};
 use foreign_types::ForeignTypeRef;
@@ -378,7 +379,34 @@ where
     }
 }
 
+/// A property descriptor is a record with some of the following attributes:
+#[derive(Debug, Default)]
+pub struct Descriptor<'a> {
+    /// `true` if and only if the value associated with the property may be changed (data descriptors only).
+    pub writable: bool,
+    /// The value associated with the property (data descriptors only).
+    pub value: Option<Local<'a, Value>>,
+    /// A function which serves as a getter for the property.
+    pub getter: Option<Local<'a, Value>>,
+    /// A function which serves as a setter for the property.
+    pub setter: Option<Local<'a, Value>>,
+    /// `true` if and only if the type of this property descriptor may be changed
+    /// and if the property may be deleted from the corresponding object.
+    pub configurable: bool,
+    /// `true` if and only if this property shows up during enumeration of the properties on the corresponding object.
+    pub enumerable: bool,
+}
+
 impl<'a> Local<'a, Value> {
+    /// Returns a property descriptor for an own property
+    /// (that is, one directly present on an object and not in the object's prototype chain) of a given object.
+    pub fn get_own_property_descriptor<T: NewAtom>(
+        &self,
+        prop: T,
+    ) -> Result<Option<Descriptor>, Error> {
+        self.ctxt.get_own_property_descriptor(self, prop)
+    }
+
     /// Get a property value on an object.
     pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
         self.ctxt.get_property(self, prop)
@@ -454,6 +482,38 @@ impl<'a> Local<'a, Value> {
 }
 
 impl ContextRef {
+    /// Returns a property descriptor for an own property
+    /// (that is, one directly present on an object and not in the object's prototype chain) of a given object.
+    pub fn get_own_property_descriptor<T: NewAtom>(
+        &self,
+        value: &Value,
+        prop: T,
+    ) -> Result<Option<Descriptor>, Error> {
+        let atom = prop.new_atom(self);
+        let mut desc = MaybeUninit::<ffi::JSPropertyDescriptor>::uninit();
+        let res =
+            unsafe { ffi::JS_GetOwnProperty(self.as_ptr(), desc.as_mut_ptr(), value.raw(), atom) };
+        self.free_atom(atom);
+
+        self.check_bool(res).map(|exists| {
+            if exists {
+                let desc = unsafe { desc.assume_init() };
+                let flags = Prop::from_bits_truncate(desc.flags as u32);
+
+                Some(Descriptor {
+                    writable: flags.contains(Prop::WRITABLE),
+                    value: Value::new(desc.value).map(|v| self.bind(v)),
+                    getter: Value::new(desc.getter).map(|v| self.bind(v)),
+                    setter: Value::new(desc.setter).map(|v| self.bind(v)),
+                    configurable: flags.contains(Prop::CONFIGURABLE),
+                    enumerable: flags.contains(Prop::ENUMERABLE),
+                })
+            } else {
+                None
+            }
+        })
+    }
+
     /// Get a property value on an object.
     pub fn get_property<T: GetProperty>(&self, this: &Value, prop: T) -> Option<Local<Value>> {
         prop.get_property(self, this)
@@ -547,9 +607,19 @@ mod tests {
 
         assert!(!obj.has_property("foo").unwrap());
         assert!(obj.get_property("foo").is_none());
+
         assert!(obj.set_property("foo", "bar").unwrap());
         assert!(obj.has_property("foo").unwrap());
         assert_eq!(obj.get_property("foo").unwrap().to_string(), "bar");
+
+        let desc = obj.get_own_property_descriptor("foo").unwrap().unwrap();
+        assert!(desc.writable);
+        assert_eq!(desc.value.unwrap().to_string(), "bar");
+        assert!(desc.getter.is_none());
+        assert!(desc.setter.is_none());
+        assert!(desc.configurable);
+        assert!(desc.enumerable);
+
         assert!(obj.delete_property("foo").unwrap());
         assert!(!obj.has_property("foo").unwrap());
     }

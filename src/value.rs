@@ -617,8 +617,14 @@ const fn mkptr<T>(tag: i32, val: *mut T) -> ffi::JSValue {
 }
 
 impl Value {
-    pub fn new<T: NewValue>(ctxt: &ContextRef, v: T) -> Local<Self> {
-        ctxt.bind(v.new_value(ctxt))
+    pub fn new(value: ffi::JSValue) -> Option<Self> {
+        let value = Value(value);
+
+        if value.is_undefined() {
+            None
+        } else {
+            Some(value)
+        }
     }
 
     pub const fn nan() -> Self {
