@@ -12,8 +12,8 @@ proc-macro = true
 [dependencies]
 log = "0.4"
 stderrlog = "0.4"
-proc-macro2 = "0.4"
-quote = "0.6"
+proc-macro2 = "1.0"
+quote = "1.0"
 proc-macro-hack = "0.5"
 
 qjs-derive-support = { version = "0.1", path = "../qjs-derive-support" }

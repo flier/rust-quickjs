@@ -106,15 +106,17 @@ pub fn qjs(input: TokenStream) -> Result<TokenStream> {
 
             let param_names = params
                 .iter()
-                .flat_map(|param| match param {
-                    syn::FnArg::Captured(syn::ArgCaptured {
-                        pat: syn::Pat::Ident(syn::PatIdent { ident, .. }),
-                        ..
-                    }) => Some(ident.to_string()),
-                    _ => {
-                        warn!("ignore param: {:?}", param);
+                .flat_map(|param| {
+                    if_chain! {
+                        if let syn::FnArg::Typed(syn::PatType { pat, .. }) = param;
+                        if let syn::Pat::Ident(syn::PatIdent { ident, .. }) = &**pat;
+                        then {
+                            Some(ident.to_string())
+                        } else {
+                            warn!("ignore param: {:?}", param);
 
-                        None
+                            None
+                        }
                     }
                 })
                 .collect::<Vec<_>>();
