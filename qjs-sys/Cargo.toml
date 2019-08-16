@@ -46,3 +46,5 @@ lazy_static = "1.3"
 regex = "1"
 cc = "1.0"
 bindgen = { version = "0.51", optional = true }
+rust-lzma = "0.4"
+tar = "0.4"
