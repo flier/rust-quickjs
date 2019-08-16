@@ -99,7 +99,7 @@ impl ContextRef {
         self.bind_atom(v.new_atom(self))
     }
 
-    fn bind_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
+    pub fn bind_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
         Local {
             ctxt: self,
             inner: Some(atom),

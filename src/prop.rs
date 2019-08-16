@@ -1,5 +1,7 @@
 use std::ffi::CString;
 use std::mem::MaybeUninit;
+use std::ptr;
+use std::slice;
 
 use failure::{format_err, Error};
 use foreign_types::ForeignTypeRef;
@@ -7,7 +9,7 @@ use foreign_types::ForeignTypeRef;
 use crate::{
     ffi,
     value::{FALSE, TRUE},
-    ContextRef, Local, NewAtom, NewValue, Value,
+    Atom, ContextRef, Local, NewAtom, NewValue, Value,
 };
 
 bitflags! {
@@ -43,6 +45,16 @@ bitflags! {
 
         const NO_ADD = ffi::JS_PROP_NO_ADD;
         const NO_EXOTIC = ffi::JS_PROP_NO_EXOTIC;
+    }
+}
+
+bitflags! {
+    /// Flags for `get_own_property_names`
+    pub struct Names: u32 {
+        const STRING = ffi::JS_GPN_STRING_MASK;
+        const SYMBOL = ffi::JS_GPN_SYMBOL_MASK;
+        /// only include the enumerable properties
+        const ENUM_ONLY = ffi::JS_GPN_ENUM_ONLY;
     }
 }
 
@@ -398,6 +410,19 @@ pub struct Descriptor<'a> {
 }
 
 impl<'a> Local<'a, Value> {
+    /// Returns an array of a given object's own property names, in the same order as we get with a normal loop.
+    pub fn keys(&self) -> Result<Option<Vec<Atom>>, Error> {
+        self.ctxt
+            .get_own_property_names(self, Names::ENUM_ONLY | Names::STRING)
+    }
+
+    /// Returns an array of all properties (including non-enumerable properties except for those which use Symbol)
+    /// found directly in a given object.
+    pub fn get_own_property_names(&self) -> Result<Option<Vec<Atom>>, Error> {
+        self.ctxt
+            .get_own_property_names(self, Names::STRING | Names::SYMBOL)
+    }
+
     /// Returns a property descriptor for an own property
     /// (that is, one directly present on an object and not in the object's prototype chain) of a given object.
     pub fn get_own_property_descriptor<T: NewAtom>(
@@ -482,6 +507,38 @@ impl<'a> Local<'a, Value> {
 }
 
 impl ContextRef {
+    /// Returns an array of all properties (including non-enumerable properties except for those which use Symbol)
+    /// found directly in a given object.
+    pub fn get_own_property_names(
+        &self,
+        value: &Value,
+        flags: Names,
+    ) -> Result<Option<Vec<Atom>>, Error> {
+        let mut ptab = ptr::null_mut();
+        let mut count = 0;
+
+        self.check_error(unsafe {
+            ffi::JS_GetOwnPropertyNames(
+                self.as_ptr(),
+                &mut ptab,
+                &mut count,
+                value.raw(),
+                flags.bits() as i32,
+            )
+        })
+        .map(|_| {
+            let names = unsafe { slice::from_raw_parts(ptab, count as usize) };
+            let names = names
+                .iter()
+                .map(|prop| self.bind_atom(prop.atom))
+                .collect::<Vec<_>>();
+
+            unsafe { ffi::js_free(self.as_ptr(), ptab as *mut _) }
+
+            Some(names)
+        })
+    }
+
     /// Returns a property descriptor for an own property
     /// (that is, one directly present on an object and not in the object's prototype chain) of a given object.
     pub fn get_own_property_descriptor<T: NewAtom>(
@@ -611,6 +668,16 @@ mod tests {
         assert!(obj.set_property("foo", "bar").unwrap());
         assert!(obj.has_property("foo").unwrap());
         assert_eq!(obj.get_property("foo").unwrap().to_string(), "bar");
+
+        assert_eq!(
+            obj.get_own_property_names()
+                .unwrap()
+                .unwrap()
+                .into_iter()
+                .map(|name| name.to_cstr().to_string_lossy().to_string())
+                .collect::<Vec<_>>(),
+            vec!["foo"]
+        );
 
         let desc = obj.get_own_property_descriptor("foo").unwrap().unwrap();
         assert!(desc.writable);

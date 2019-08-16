@@ -1,4 +1,3 @@
-use std::mem;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_int, c_void};
 use std::ptr::{null_mut, NonNull};
@@ -161,7 +160,7 @@ mod tests {
         let usage2 = rt.memory_usage();
         assert!(usage2.memory_used_size > usage.memory_used_size);
 
-        mem::drop(ctxt);
+        std::mem::drop(ctxt);
 
         let usage3 = rt.memory_usage();
         assert!(usage3.memory_used_size > usage.memory_used_size);

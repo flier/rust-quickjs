@@ -109,7 +109,7 @@ pub use module::{ModuleDef, ModuleInitFunc, ModuleLoaderFunc, ModuleNormalizeFun
 pub use precompile::{ReadObj, WriteObj};
 pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, Descriptor as PropertyDescriptor,
-    GetProperty, HasProperty, Prop, SetProperty,
+    GetProperty, HasProperty, Names as PropertyNames, Prop, SetProperty,
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, MemoryUsage, Runtime, RuntimeRef};
 pub use value::{ExtractValue, NewValue, Value};
