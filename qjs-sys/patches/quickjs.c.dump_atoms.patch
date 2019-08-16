@@ -1,4 +1,0 @@
-96c96
-< //#define DUMP_ATOMS      /* dump atoms in JS_FreeContext */
----
-> #define DUMP_ATOMS      /* dump atoms in JS_FreeContext */

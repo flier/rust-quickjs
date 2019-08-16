@@ -1,4 +1,0 @@
-95c95
-< //#define DUMP_OBJECTS    /* dump objects in JS_FreeContext */
----
-> #define DUMP_OBJECTS    /* dump objects in JS_FreeContext */

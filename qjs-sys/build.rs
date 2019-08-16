@@ -1,11 +1,12 @@
 use std::env;
 use std::ffi::CString;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
+use regex::Regex;
 
 const QUICKJS_SRC: &str = "quickjs-2019-08-10.tar.xz";
 
@@ -14,6 +15,81 @@ lazy_static! {
     static ref CARGO_MANIFEST_DIR: PathBuf = env::var_os("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR")
         .into();
+}
+
+fn patch_makefile(makefile: &Path) -> Result<(), Error> {
+    let content = fs::read_to_string(makefile)?;
+
+    let content = if cfg!(feature = "debug") {
+        Regex::new("^CFLAGS_OPT=(.*) -O2\n")?.replace(&content, "CFLAGS_OPT=$1 -O0 -g\n")
+    } else {
+        content.into()
+    };
+
+    let content = if cfg!(feature = "pic") {
+        content
+            .replace("CFLAGS+=$(DEFINES)\n", "CFLAGS+=$(DEFINES) -fPIC\n")
+            .into()
+    } else {
+        content
+    };
+
+    fs::rename(makefile, makefile.with_extension("bak"))?;
+    fs::write(makefile, content.as_bytes())?;
+
+    Ok(())
+}
+
+fn patch_quickjs(quickjs: &Path) -> Result<(), Error> {
+    let mut content = fs::read_to_string(quickjs)?;
+
+    if cfg!(feature = "dump_free") {
+        content = content.replace("//#define DUMP_FREE\n", "#define DUMP_FREE\n");
+    }
+    if cfg!(feature = "dump_closure") {
+        content = content.replace("//#define DUMP_CLOSURE\n", "#define DUMP_CLOSURE\n");
+    }
+    if cfg!(feature = "dump_bytecode") {
+        content = content.replace("//#define DUMP_BYTECODE", "#define DUMP_BYTECODE");
+    }
+    if cfg!(feature = "dump_gc") {
+        content = content.replace("//#define DUMP_GC\n", "#define DUMP_GC\n");
+    }
+    if cfg!(feature = "dump_gc_free") {
+        content = content.replace("//#define DUMP_GC_FREE\n", "#define DUMP_GC_FREE\n");
+    }
+    if cfg!(feature = "dump_leaks") {
+        content = content.replace("//#define DUMP_LEAKS", "#define DUMP_LEAKS");
+    }
+    if cfg!(feature = "dump_mem") {
+        content = content.replace("//#define DUMP_MEM\n", "#define DUMP_MEM\n");
+    }
+    if cfg!(feature = "dump_objects") {
+        content = content.replace("//#define DUMP_OBJECTS", "#define DUMP_OBJECTS");
+    }
+    if cfg!(feature = "dump_atoms") {
+        content = content.replace("//#define DUMP_ATOMS", "#define DUMP_ATOMS");
+    }
+    if cfg!(feature = "dump_shapes") {
+        content = content.replace("//#define DUMP_SHAPES", "#define DUMP_SHAPES");
+    }
+    if cfg!(feature = "dump_module_resolve") {
+        content = content.replace(
+            "//#define DUMP_MODULE_RESOLVE\n",
+            "#define DUMP_MODULE_RESOLVE\n",
+        );
+    }
+    if cfg!(feature = "dump_promise") {
+        content = content.replace("//#define DUMP_PROMISE\n", "#define DUMP_PROMISE\n");
+    }
+    if cfg!(feature = "dump_read_object") {
+        content = content.replace("//#define DUMP_READ_OBJECT\n", "#define DUMP_READ_OBJECT\n");
+    }
+
+    fs::rename(quickjs, quickjs.with_extension("bak"))?;
+    fs::write(quickjs, content.as_bytes())?;
+
+    Ok(())
 }
 
 fn build_libquickjs() -> Result<(), Error> {
@@ -38,69 +114,8 @@ fn build_libquickjs() -> Result<(), Error> {
             .output()?;
     }
 
-    let apply_patch = |file, name: &str| -> Result<(), Error> {
-        let patch = CARGO_MANIFEST_DIR
-            .join(format!("patches/{}.{}.patch", file, name))
-            .canonicalize()?;
-
-        println!(
-            "patch `{}` to {} with {:?}",
-            file,
-            name.replace("_", " "),
-            patch
-        );
-
-        Command::new("patch")
-            .current_dir(&quickjs_dir)
-            .arg(file)
-            .arg(patch)
-            .output()?;
-
-        Ok(())
-    };
-
-    if cfg!(target_os = "macos") {
-        apply_patch("Makefile", "macos")?;
-    }
-    if cfg!(feature = "debug") {
-        apply_patch("Makefile", "debug")?;
-    }
-    if cfg!(feature = "pic") {
-        apply_patch("Makefile", "pic")?;
-    }
-    if cfg!(feature = "dump_free") {
-        apply_patch("quickjs.c", "dump_free")?;
-    }
-    if cfg!(feature = "dump_closure") {
-        apply_patch("quickjs.c", "dump_closure")?;
-    }
-    if cfg!(feature = "dump_gc") {
-        apply_patch("quickjs.c", "dump_gc")?;
-    }
-    if cfg!(feature = "dump_gc_free") {
-        apply_patch("quickjs.c", "dump_gc_free")?;
-    }
-    if cfg!(feature = "dump_leaks") {
-        apply_patch("quickjs.c", "dump_leaks")?;
-    }
-    if cfg!(feature = "dump_objects") {
-        apply_patch("quickjs.c", "dump_objects")?;
-    }
-    if cfg!(feature = "dump_atoms") {
-        apply_patch("quickjs.c", "dump_atoms")?;
-    }
-    if cfg!(feature = "dump_shapes") {
-        apply_patch("quickjs.c", "dump_shapes")?;
-    }
-    if cfg!(feature = "dump_module_resolve") {
-        apply_patch("quickjs.c", "dump_module_resolve")?;
-    }
-    if cfg!(feature = "dump_promise") {
-        apply_patch("quickjs.c", "dump_promise")?;
-    }
-    if cfg!(feature = "dump_read_object") {
-        apply_patch("quickjs.c", "dump_read_object")?;
-    }
+    patch_makefile(&quickjs_dir.join("Makefile"))?;
+    patch_quickjs(&quickjs_dir.join("quickjs.c"))?;
 
     let repl_c = if cfg!(feature = "bignum") {
         "repl-bn.c"

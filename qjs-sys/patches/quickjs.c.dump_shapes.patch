@@ -1,4 +1,0 @@
-97c97
-< //#define DUMP_SHAPES     /* dump shapes in JS_FreeContext */
----
-> #define DUMP_SHAPES     /* dump shapes in JS_FreeContext */
