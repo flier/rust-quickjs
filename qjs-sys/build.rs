@@ -8,7 +8,7 @@ use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-const QUICKJS_SRC: &str = "quickjs-2019-08-10.tar.xz";
+const QUICKJS_SRC: &str = "quickjs-2019-08-18.tar.xz";
 
 lazy_static! {
     static ref OUT_DIR: PathBuf = env::var_os("OUT_DIR").expect("OUT_DIR").into();
@@ -103,6 +103,22 @@ fn patch_quickjs(quickjs: &Path) -> Result<(), Error> {
     Ok(())
 }
 
+fn patch_quickjs_libc(quickjs_libc: &Path) -> Result<(), Error> {
+    let mut content = fs::read_to_string(quickjs_libc)?;
+
+    if cfg!(target_os = "macos") {
+        content = content
+            .replace("(&st.st_atim)", "(&st.st_atimespec)")
+            .replace("(&st.st_mtim)", "(&st.st_mtimespec)")
+            .replace("(&st.st_ctim)", "(&st.st_ctimespec)");
+    }
+
+    fs::rename(quickjs_libc, quickjs_libc.with_extension("bak"))?;
+    fs::write(quickjs_libc, content.as_bytes())?;
+
+    Ok(())
+}
+
 fn build_libquickjs() -> Result<(), Error> {
     if !QUICKJS_DIR.join("quickjs.h").is_file() {
         unpack_source_files(
@@ -117,6 +133,7 @@ fn build_libquickjs() -> Result<(), Error> {
 
     patch_makefile(&QUICKJS_DIR.join("Makefile"))?;
     patch_quickjs(&QUICKJS_DIR.join("quickjs.c"))?;
+    patch_quickjs_libc(&QUICKJS_DIR.join("quickjs-libc.c"))?;
 
     let repl_c = if cfg!(feature = "bignum") {
         "repl-bn.c"

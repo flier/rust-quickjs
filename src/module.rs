@@ -4,7 +4,7 @@ use std::ptr::{null_mut, NonNull};
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, RuntimeRef};
+use crate::{ffi, value::FALSE, ContextRef, RuntimeRef};
 
 /// The C module definition.
 pub type ModuleDef = ffi::JSModuleDef;
@@ -51,5 +51,14 @@ impl ContextRef {
                 init,
             )
         })
+    }
+
+    /// return true if `input` contains the source of a module (heuristic).
+    ///
+    /// Heuristic: skip comments and expect 'import' keyword not followed by '(' or '.'
+    pub fn detect_module<T: Into<Vec<u8>>>(&self, input: T) -> bool {
+        let input = input.into();
+
+        unsafe { ffi::JS_DetectModule(input.as_ptr() as *const _, input.len()) != FALSE }
     }
 }
