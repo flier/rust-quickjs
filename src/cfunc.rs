@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
+use std::panic;
 use std::ptr;
 use std::slice;
 
@@ -76,23 +77,26 @@ impl ContextRef {
             magic: c_int,
             data: *mut ffi::JSValue,
         ) -> ffi::JSValue {
-            let ctxt = ContextRef::from_ptr(ctx);
-            let this = Value::from(this_val);
-            let this = this.check_undefined();
-            let args = slice::from_raw_parts(argv, argc as usize);
-            let data = ptr::NonNull::new_unchecked(data);
-            let func = ctxt.get_userdata_unchecked::<CFunction<T>>(data.cast().as_ref());
-            let func = *func.as_ref();
+            panic::catch_unwind(|| {
+                let ctxt = ContextRef::from_ptr(ctx);
+                let this = Value::from(this_val);
+                let this = this.check_undefined();
+                let args = slice::from_raw_parts(argv, argc as usize);
+                let data = ptr::NonNull::new_unchecked(data);
+                let func = ctxt.get_userdata_unchecked::<CFunction<T>>(data.cast().as_ref());
+                let func = *func.as_ref();
 
-            trace!(
-                "call C function @ {:p} with {} args, this = {:?}, magic = {}",
-                &func,
-                args.len(),
-                this,
-                magic
-            );
+                trace!(
+                    "call C function @ {:p} with {} args, this = {:?}, magic = {}",
+                    &func,
+                    args.len(),
+                    this,
+                    magic
+                );
 
-            func(ctxt, this, &*(args as *const _ as *const _)).new_value(ctxt)
+                func(ctxt, this, &*(args as *const _ as *const _)).new_value(ctxt)
+            })
+            .unwrap_or_else(|_| Value::undefined().into())
         }
 
         trace!("new C function @ {:p}", &func);
@@ -191,18 +195,22 @@ macro_rules! new_func_value {
                     _magic: c_int,
                     data: *mut ffi::JSValue,
                 ) -> ffi::JSValue {
-                    let ctxt = ContextRef::from_ptr(ctx);
-                    let data = ptr::NonNull::new_unchecked(data);
-                    let func = ctxt.get_userdata_unchecked::<fn() -> Ret>(data.cast().as_ref());
-                    let func = *func.as_ref();
+                    panic::catch_unwind(|| {
+                        let ctxt = ContextRef::from_ptr(ctx);
+                        let data = ptr::NonNull::new_unchecked(data);
+                        let func = ctxt.get_userdata_unchecked::<fn() -> Ret>(data.cast().as_ref());
+                        let func = *func.as_ref();
 
-                    func().new_value(ctxt).into()
+                        func().new_value(ctxt).into()
+                    })
+                    .unwrap_or_else(|_| Value::undefined().into())
                 }
 
                 ctxt.new_c_function_data(stub::<Ret>, 0, 0, ctxt.new_userdata(self))
                     .unwrap()
                     .into_inner()
                     .into()
+
             }
         }
     };
@@ -218,19 +226,22 @@ macro_rules! new_func_value {
                     _magic: c_int,
                     data: *mut ffi::JSValue,
                 ) -> ffi::JSValue {
-                    let ctxt = ContextRef::from_ptr(ctx);
-                    let data = ptr::NonNull::new_unchecked(data);
-                    let func = ctxt.get_userdata_unchecked::<fn($( $Arg ),*) -> Ret>(data.cast().as_ref());
-                    let func = *func.as_ref();
-                    let args = slice::from_raw_parts(argv, argc as usize);
-                    let mut iter = args.iter();
+                    panic::catch_unwind(|| {
+                        let ctxt = ContextRef::from_ptr(ctx);
+                        let data = ptr::NonNull::new_unchecked(data);
+                        let func = ctxt.get_userdata_unchecked::<fn($( $Arg ),*) -> Ret>(data.cast().as_ref());
+                        let func = *func.as_ref();
+                        let args = slice::from_raw_parts(argv, argc as usize);
+                        let mut iter = args.iter();
 
-                    func($({
-                        let value = ctxt.bind(*iter.next().unwrap());
-                        <$Arg as ExtractValue>::extract_value(&value).unwrap()
-                    }),*)
-                        .new_value(&ctxt)
-                        .into()
+                        func($({
+                            let value = ctxt.bind(*iter.next().unwrap());
+                            <$Arg as ExtractValue>::extract_value(&value).unwrap()
+                        }),*)
+                            .new_value(&ctxt)
+                            .into()
+                    })
+                    .unwrap_or_else(|_| Value::undefined().into())
                 }
 
                 ctxt.new_c_function_data(stub::<Ret, $($Arg),*>, 0, 0, ctxt.new_userdata(self))

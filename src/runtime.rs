@@ -1,5 +1,6 @@
 use std::mem::MaybeUninit;
 use std::os::raw::{c_int, c_void};
+use std::panic;
 use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
@@ -112,13 +113,16 @@ impl RuntimeRef {
         unsafe {
             if let Some(func) = handler {
                 unsafe extern "C" fn stub(rt: *mut ffi::JSRuntime, opaque: *mut c_void) -> c_int {
-                    let rt = RuntimeRef::from_ptr(rt);
-                    let func: fn(rt: &RuntimeRef) -> Interrupt = *(opaque as *mut _);
+                    panic::catch_unwind(|| {
+                        let rt = RuntimeRef::from_ptr(rt);
+                        let func: fn(rt: &RuntimeRef) -> Interrupt = *(opaque as *mut _);
 
-                    match func(rt) {
-                        Interrupt::Break => TRUE,
-                        Interrupt::Continue => FALSE,
-                    }
+                        match func(rt) {
+                            Interrupt::Break => TRUE,
+                            Interrupt::Continue => FALSE,
+                        }
+                    })
+                    .unwrap_or(TRUE)
                 }
 
                 ffi::JS_SetInterruptHandler(self.as_ptr(), Some(stub), func as *mut _)
