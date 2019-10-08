@@ -670,6 +670,12 @@ impl Value {
         tag == ffi::JS_TAG_INT || tag == ffi::JS_TAG_BIG_INT
     }
 
+    pub fn is_float(&self) -> bool {
+        let tag = self.tag();
+
+        tag == ffi::JS_TAG_FLOAT64 || tag == ffi::JS_TAG_BIG_FLOAT
+    }
+
     pub fn is_big_float(&self) -> bool {
         self.tag() == ffi::JS_TAG_BIG_FLOAT
     }
@@ -694,20 +700,24 @@ impl Value {
         self.tag() == ffi::JS_TAG_UNINITIALIZED
     }
 
-    pub fn is_string(&self) -> bool {
-        self.tag() == ffi::JS_TAG_STRING
-    }
-
     pub fn is_symbol(&self) -> bool {
         self.tag() == ffi::JS_TAG_SYMBOL
     }
 
-    pub fn is_object(&self) -> bool {
-        self.tag() == ffi::JS_TAG_OBJECT
+    pub fn is_string(&self) -> bool {
+        self.tag() == ffi::JS_TAG_STRING
     }
 
     pub fn is_module(&self) -> bool {
         self.tag() == ffi::JS_TAG_MODULE
+    }
+
+    pub fn is_function_bytecode(&self) -> bool {
+        self.tag() == ffi::JS_TAG_FUNCTION_BYTECODE
+    }
+
+    pub fn is_object(&self) -> bool {
+        self.tag() == ffi::JS_TAG_OBJECT
     }
 
     pub fn as_int(&self) -> Option<i32> {
