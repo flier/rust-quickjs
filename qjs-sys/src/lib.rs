@@ -25,15 +25,15 @@ cfg_if! {
     if #[cfg(feature = "repl")] {
         extern "C" {
             #[no_mangle]
-            pub static repl: [u8; 0];
+            pub static qjsc_repl: [u8; 0];
 
             #[no_mangle]
-            pub static repl_size: u32;
+            pub static qjsc_repl_size: u32;
         }
 
         lazy_static! {
             pub static ref REPL: &'static [u8] = unsafe {
-                std::slice::from_raw_parts(repl.as_ptr(), repl_size as usize)
+                std::slice::from_raw_parts(qjsc_repl.as_ptr(), qjsc_repl_size as usize)
             };
         }
     }
@@ -43,15 +43,15 @@ cfg_if! {
     if #[cfg(feature = "qjscalc")] {
         extern "C" {
             #[no_mangle]
-            pub static qjscalc: [u8; 0];
+            pub static qjsc_qjscalc: [u8; 0];
 
             #[no_mangle]
-            pub static qjscalc_size: u32;
+            pub static qjsc_qjscalc_size: u32;
         }
 
         lazy_static! {
             pub static ref QJSCALC: &'static [u8] = unsafe {
-                std::slice::from_raw_parts(qjscalc.as_ptr(), qjscalc_size as usize)
+                std::slice::from_raw_parts(qjsc_qjscalc.as_ptr(), qjsc_qjscalc_size as usize)
             };
         }
     }

@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, EvalBinary, ModuleDef, RuntimeRef};
+use crate::{ffi, ContextRef, ModuleDef, RuntimeRef};
 
 impl ContextRef {
     pub fn init_module_std(&self) -> Result<NonNull<ModuleDef>, Error> {
@@ -45,12 +45,6 @@ impl ContextRef {
 
     pub fn std_dump_error(&self) {
         unsafe { ffi::js_std_dump_error(self.as_ptr()) }
-    }
-
-    pub fn std_eval_binary(&self, buf: &[u8], flags: EvalBinary) {
-        unsafe {
-            ffi::js_std_eval_binary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits() as i32)
-        }
     }
 }
 

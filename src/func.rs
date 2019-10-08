@@ -1,7 +1,7 @@
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::FALSE, ContextRef, Local, NewAtom, NewValue, Value};
+use crate::{ffi, undefined, value::FALSE, ContextRef, Local, NewAtom, NewValue, Value};
 
 pub trait Args {
     type Values: AsRef<[ffi::JSValue]>;
@@ -159,7 +159,7 @@ impl ContextRef {
                 ffi::JS_Call(
                     self.as_ptr(),
                     func.raw(),
-                    this.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                    this.map_or_else(|| undefined().raw(), |v| v.raw()),
                     args.len() as i32,
                     args.as_ptr() as *mut _,
                 )
@@ -231,7 +231,7 @@ impl ContextRef {
             ffi::JS_CallConstructor2(
                 self.as_ptr(),
                 func.raw(),
-                new_target.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                new_target.map_or_else(|| undefined().raw(), |v| v.raw()),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )

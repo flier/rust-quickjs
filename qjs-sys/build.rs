@@ -8,7 +8,7 @@ use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-const QUICKJS_SRC: &str = "quickjs-2019-08-18.tar.xz";
+const QUICKJS_SRC: &str = "quickjs-2019-09-18.tar.xz";
 
 lazy_static! {
     static ref OUT_DIR: PathBuf = env::var_os("OUT_DIR").expect("OUT_DIR").into();

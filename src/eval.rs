@@ -6,7 +6,7 @@ use std::path::Path;
 use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, Context, ContextRef, ExtractValue, Local, Runtime, Value};
+use crate::{ffi, Context, ContextRef, ExtractValue, Local, ReadObj, Runtime, Value};
 
 bitflags! {
     /// Flags for `eval` method.
@@ -24,15 +24,11 @@ bitflags! {
         const STRICT = ffi::JS_EVAL_FLAG_STRICT;
         /// force 'strip' mode
         const STRIP = ffi::JS_EVAL_FLAG_STRIP;
-        /// internal use
+        /// compile but do not run.
+        ///
+        /// The result is an object with a `JS_TAG_FUNCTION_BYTECODE` or `JS_TAG_MODULE` tag.
+        /// It can be executed with `JS_EvalFunction()`.
         const COMPILE_ONLY = ffi::JS_EVAL_FLAG_COMPILE_ONLY;
-    }
-}
-
-bitflags! {
-    /// Flags for `eval_binary` method.
-    pub struct EvalBinary: u32 {
-        const LOAD_ONLY = ffi::JS_EVAL_BINARY_LOAD_ONLY;
     }
 }
 
@@ -72,14 +68,14 @@ impl Source for &Path {
 }
 
 impl Source for &[u8] {
-    type Flags = EvalBinary;
+    type Flags = ();
 
     fn default_flags() -> Self::Flags {
-        EvalBinary::empty()
+        ()
     }
 
-    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
-        ctxt.eval_binary(self, flags)
+    fn eval(self, ctxt: &'_ ContextRef, _flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+        ctxt.eval_binary(self, false)
     }
 }
 
@@ -127,7 +123,7 @@ pub fn eval<T: Source, V: ExtractValue>(source: T) -> Result<Option<V>, Error> {
     ctxt.init_module_os()?;
 
     if cfg!(feature = "qjscalc") {
-        ctxt.eval_binary(&*ffi::QJSCALC, EvalBinary::empty())?;
+        ctxt.eval_binary(&*ffi::QJSCALC, false)?;
     }
 
     let res = source.eval(&ctxt, T::default_flags()).map(|v| {
@@ -141,6 +137,15 @@ pub fn eval<T: Source, V: ExtractValue>(source: T) -> Result<Option<V>, Error> {
     rt.std_free_handlers();
 
     res
+}
+
+pub fn load_file<P: AsRef<Path>>(path: P) -> Result<String, Error> {
+    let mut f = File::open(path)?;
+    let mut s = String::new();
+
+    f.read_to_string(&mut s)?;
+
+    Ok(s)
 }
 
 impl ContextRef {
@@ -194,27 +199,33 @@ impl ContextRef {
     pub fn eval_file<P: AsRef<Path>>(&self, path: P, flags: Eval) -> Result<Local<Value>, Error> {
         let filename = path.as_ref().to_string_lossy().to_string();
 
-        self.load_file(path)
-            .and_then(|s| self.eval_script(s, &filename, flags))
-    }
-
-    fn load_file<P: AsRef<Path>>(&self, path: P) -> Result<String, Error> {
-        let mut f = File::open(path)?;
-        let mut s = String::new();
-
-        f.read_to_string(&mut s)?;
-
-        Ok(s)
+        load_file(path).and_then(|s| self.eval_script(s, &filename, flags))
     }
 
     /// Evaluate a script or module source in bytecode.
-    pub fn eval_binary(&self, buf: &[u8], flags: EvalBinary) -> Result<Local<Value>, Error> {
-        trace!("eval {} bytes binary {:?}", buf.len(), flags,);
+    pub fn eval_binary(&self, buf: &[u8], load_only: bool) -> Result<(Local<Value>), Error> {
+        trace!(
+            "eval {} bytes function{}",
+            buf.len(),
+            if load_only { " (load only)" } else { "" }
+        );
 
-        self.bind(unsafe {
-            ffi::JS_EvalBinary(self.as_ptr(), buf.as_ptr(), buf.len(), flags.bits as i32)
-        })
-        .ok()
+        let obj = self.read_object(buf, ReadObj::BYTECODE)?;
+
+        if load_only {
+            if obj.is_module() {
+                self.set_import_meta(&obj, false, false)?;
+            }
+
+            Ok(self.undefined())
+        } else {
+            if obj.is_module() {
+                self.resolve_module(&obj)?;
+                self.set_import_meta(&obj, false, true)?;
+            }
+
+            self.eval_function(obj)
+        }
     }
 
     /// Parse JSON expression.

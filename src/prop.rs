@@ -7,7 +7,7 @@ use failure::{format_err, Error};
 use foreign_types::ForeignTypeRef;
 
 use crate::{
-    ffi,
+    ffi, undefined,
     value::{FALSE, TRUE},
     Atom, ContextRef, Local, NewAtom, NewValue, Value,
 };
@@ -263,9 +263,9 @@ where
                 ctxt.as_ptr(),
                 this.raw(),
                 atom,
-                val.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
-                getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
-                setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                val.map_or_else(|| undefined().raw(), |v| v.raw()),
+                getter.map_or_else(|| undefined().raw(), |v| v.raw()),
+                setter.map_or_else(|| undefined().raw(), |v| v.raw()),
                 flags.bits as i32,
             )
         };
@@ -381,8 +381,8 @@ where
                 ctxt.as_ptr(),
                 this.raw(),
                 atom,
-                getter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
-                setter.map_or_else(|| Value::undefined().raw(), |v| v.raw()),
+                getter.map_or_else(|| undefined().raw(), |v| v.raw()),
+                setter.map_or_else(|| undefined().raw(), |v| v.raw()),
                 flags.bits as i32,
             )
         };

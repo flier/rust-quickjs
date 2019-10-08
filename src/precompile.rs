@@ -60,12 +60,8 @@ impl ContextRef {
     }
 
     /// Evaluate a script or module source in bytecode.
-    pub fn eval_function<T: Into<ffi::JSValue>>(
-        &self,
-        func: T,
-        this: &Value,
-    ) -> Result<Local<Value>, Error> {
-        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into(), this.raw()) })
+    pub fn eval_function<T: Into<ffi::JSValue>>(&self, func: T) -> Result<Local<Value>, Error> {
+        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into()) })
             .ok()
     }
 }

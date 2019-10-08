@@ -149,6 +149,10 @@ impl ContextRef {
             s
         }
     }
+
+    pub fn value_to_atom(&self, value: &Value) -> Local<ffi::JSAtom> {
+        self.bind_atom(unsafe { ffi::JS_ValueToAtom(self.as_ptr(), value.raw()) })
+    }
 }
 
 #[cfg(test)]

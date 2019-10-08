@@ -101,18 +101,21 @@ pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCF
 pub use class::{ClassDef, ClassId};
 pub use context::{Builder as ContextBuilder, Context, ContextRef};
 pub use error::ErrorKind;
-pub use eval::{eval, Eval, EvalBinary, Source};
+pub use eval::{eval, load_file, Eval, Source};
 pub use func::Args;
 pub use handle::{Bindable, Local, Unbindable};
 pub use job::JobFunc;
-pub use module::{ModuleDef, ModuleInitFunc, ModuleLoaderFunc, ModuleNormalizeFunc};
+pub use module::{detect_module, ModuleDef, ModuleInitFunc, ModuleLoaderFunc, ModuleNormalizeFunc};
 pub use precompile::{ReadObj, WriteObj};
 pub use prop::{
     DefinePropertyGetSet, DefinePropertyValue, DeleteProperty, Descriptor as PropertyDescriptor,
     GetProperty, HasProperty, Names as PropertyNames, Prop, SetProperty,
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, MemoryUsage, Runtime, RuntimeRef};
-pub use value::{ExtractValue, NewValue, Value};
+pub use value::{
+    exception, false_value, nan, null, true_value, undefined, uninitialized, ExtractValue,
+    NewValue, Value,
+};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

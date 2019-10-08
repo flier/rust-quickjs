@@ -37,7 +37,7 @@ qjs-derive = { version = "0.1", path = "qjs-derive" }
 [dev-dependencies]
 pretty_env_logger = "0.3"
 cfg-if = "0.1"
-structopt = "0.2"
+structopt = "0.3"
 tempfile = "3.1"
 cc = "1.0"
 platforms = "0.2"

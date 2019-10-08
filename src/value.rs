@@ -223,31 +223,31 @@ impl ContextRef {
     }
 
     pub fn nan(&self) -> Local<Value> {
-        self.bind(Value::nan())
+        self.bind(nan())
     }
 
     pub fn null(&self) -> Local<Value> {
-        self.bind(Value::null())
+        self.bind(null())
     }
 
     pub fn undefined(&self) -> Local<Value> {
-        self.bind(Value::undefined())
+        self.bind(undefined())
     }
 
     pub fn false_value(&self) -> Local<Value> {
-        self.bind(Value::false_value())
+        self.bind(false_value())
     }
 
     pub fn true_value(&self) -> Local<Value> {
-        self.bind(Value::true_value())
+        self.bind(true_value())
     }
 
     pub fn exception(&self) -> Local<Value> {
-        self.bind(Value::exception())
+        self.bind(exception())
     }
 
     pub fn uninitialized(&self) -> Local<Value> {
-        self.bind(Value::uninitialized())
+        self.bind(uninitialized())
     }
 
     pub fn new_value<T: NewValue>(&self, s: T) -> Value {
@@ -616,6 +616,39 @@ const fn mkptr<T>(tag: i32, val: *mut T) -> ffi::JSValue {
     }
 }
 
+pub const fn nan() -> Value {
+    Value(ffi::JSValue {
+        u: ffi::JSValueUnion {
+            float64: std::f64::NAN,
+        },
+        tag: JS_TAG_FLOAT64 as i64,
+    })
+}
+
+pub const fn null() -> Value {
+    Value(mkval(JS_TAG_NULL, 0))
+}
+
+pub const fn undefined() -> Value {
+    Value(mkval(JS_TAG_UNDEFINED, 0))
+}
+
+pub const fn false_value() -> Value {
+    Value(mkval(JS_TAG_BOOL, FALSE))
+}
+
+pub const fn true_value() -> Value {
+    Value(mkval(JS_TAG_BOOL, TRUE))
+}
+
+pub const fn exception() -> Value {
+    Value(mkval(JS_TAG_EXCEPTION, 0))
+}
+
+pub const fn uninitialized() -> Value {
+    Value(mkval(JS_TAG_UNINITIALIZED, 0))
+}
+
 impl Value {
     pub fn new(value: ffi::JSValue) -> Option<Self> {
         let value = Value(value);
@@ -625,39 +658,6 @@ impl Value {
         } else {
             Some(value)
         }
-    }
-
-    pub const fn nan() -> Self {
-        Value(ffi::JSValue {
-            u: ffi::JSValueUnion {
-                float64: std::f64::NAN,
-            },
-            tag: JS_TAG_FLOAT64 as i64,
-        })
-    }
-
-    pub const fn null() -> Self {
-        Value(mkval(JS_TAG_NULL, 0))
-    }
-
-    pub const fn undefined() -> Self {
-        Value(mkval(JS_TAG_UNDEFINED, 0))
-    }
-
-    pub const fn false_value() -> Self {
-        Value(mkval(JS_TAG_BOOL, FALSE))
-    }
-
-    pub const fn true_value() -> Self {
-        Value(mkval(JS_TAG_BOOL, TRUE))
-    }
-
-    pub const fn exception() -> Self {
-        Value(mkval(JS_TAG_EXCEPTION, 0))
-    }
-
-    pub const fn uninitialized() -> Self {
-        Value(mkval(JS_TAG_UNINITIALIZED, 0))
     }
 
     pub fn raw(&self) -> ffi::JSValue {
@@ -712,6 +712,10 @@ impl Value {
 
     pub fn is_object(&self) -> bool {
         self.tag() == JS_TAG_OBJECT
+    }
+
+    pub fn is_module(&self) -> bool {
+        self.tag() == JS_TAG_MODULE
     }
 
     pub fn as_int(&self) -> Option<i32> {

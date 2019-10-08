@@ -105,6 +105,10 @@ pub struct Opt {
     #[structopt(long = "no-promise")]
     no_promise: bool,
 
+    /// Disable the module loader feature
+    #[structopt(long = "no-module-loader")]
+    no_module_loader: bool,
+
     /// Compile Javascript files to C module
     #[structopt(parse(from_os_str))]
     files: Vec<PathBuf>,
@@ -155,7 +159,7 @@ impl Opt {
         m
     }
 
-    fn features(&self) -> Vec<&'static str> {
+    fn features(&self) -> (bool, Vec<&'static str>) {
         let mut v = Vec::new();
         let mut date = !self.no_date;
         let mut eval = !self.no_eval;
@@ -166,6 +170,7 @@ impl Opt {
         let mut map = !self.no_map;
         let mut typedarray = !self.no_typedarray;
         let mut promise = !self.no_promise;
+        let mut module_loader = !self.no_module_loader;
 
         for feature in &self.features {
             match feature.as_str() {
@@ -187,6 +192,8 @@ impl Opt {
                 "no-typedarray" => typedarray = false,
                 "promise" => promise = true,
                 "no-promise" => promise = false,
+                "module-loader" => module_loader = true,
+                "no-module-loader" => module_loader = false,
                 s => {
                     warn!("unknown feature: {}", s);
                 }
@@ -221,7 +228,7 @@ impl Opt {
             v.push("Promise")
         }
 
-        v
+        (module_loader, v)
     }
 }
 
@@ -266,8 +273,8 @@ impl DerefMut for Loader {
 }
 
 impl Loader {
-    fn new(gen: Generator) -> Self {
-        Loader(gen)
+    fn new(generator: Generator) -> Self {
+        Loader(generator)
     }
 }
 
@@ -319,7 +326,9 @@ impl Loader {
             ctxt.new_c_module(module_name, Some(js_module_dummy_init))
                 .ok()
         } else if module_name.ends_with(".so") || module_name.ends_with(".dylib") {
-            warn!("binary module '{}' is not compiled", module_name);
+            warn!("binary module '{}' will be dynamically loaded", module_name);
+
+            self.dynamic_export = true;
 
             // create a dummy module
             ctxt.new_c_module(module_name, Some(js_module_dummy_init))
@@ -384,6 +393,7 @@ pub struct Generator {
     cmodules: HashMap<String, String>,
     cnames: HashMap<String, bool>,
     static_init_modules: HashMap<String, String>,
+    dynamic_export: bool,
 }
 
 impl Deref for Generator {
@@ -423,6 +433,7 @@ impl Generator {
             cmodules,
             static_init_modules: HashMap::new(),
             cnames: HashMap::new(),
+            dynamic_export: false,
         })
     }
 
@@ -490,11 +501,23 @@ int main(int argc, char **argv)
 
     rt = JS_NewRuntime();
     ctx = JS_NewContextRaw(rt);
-
-    JS_AddIntrinsicBaseObjects(ctx);"#
+"#
         )?;
 
-        for feature in self.features() {
+        let (module_loader, features) = self.features();
+
+        // add the module loader if necessary
+        if module_loader {
+            writeln!(
+                &mut self.w,
+                "    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);"
+            )?;
+        }
+
+        // add the basic objects
+        writeln!(&mut self.w, "    JS_AddIntrinsicBaseObjects(ctx);\n")?;
+
+        for feature in features {
             writeln!(&mut self.w, "    JS_AddIntrinsic{}(ctx);", feature)?;
         }
 
@@ -519,11 +542,7 @@ int main(int argc, char **argv)
                 "    js_std_eval_binary(ctx, {}, {}_size, {});",
                 cname,
                 cname,
-                if load_only {
-                    "JS_EVAL_BINARY_LOAD_ONLY"
-                } else {
-                    "0"
-                }
+                if load_only { "1" } else { "0" }
             )?;
         }
 
@@ -557,6 +576,14 @@ int main(int argc, char **argv)
 
             if let Some(ref quickjs_dir) = self.quickjs_dir {
                 build.include(quickjs_dir);
+            }
+
+            if self.dynamic_export {
+                build.flag_if_supported("-rdynamic");
+            }
+
+            if self.use_lto {
+                build.flag_if_supported("-flto");
             }
 
             build

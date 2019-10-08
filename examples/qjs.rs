@@ -15,7 +15,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 use structopt::StructOpt;
 
-use qjs::{ffi, Context, ContextRef, ErrorKind, Eval, EvalBinary, MallocFunctions, Runtime};
+use qjs::{ffi, Context, ContextRef, ErrorKind, Eval, Local, MallocFunctions, Runtime, Value};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "qjs", about = "QuickJS stand alone interpreter")]
@@ -178,6 +178,23 @@ unsafe extern "C" fn jsc_module_loader(
         .map_or_else(null_mut, |func| func.as_ptr().as_ptr())
 }
 
+fn eval_buf<'a>(
+    ctxt: &'a ContextRef,
+    buf: &str,
+    filename: &str,
+    flags: Eval,
+) -> Result<Local<'a, Value>, Error> {
+    if flags.contains(Eval::MODULE) {
+        let val = ctxt.eval_script(buf, filename, flags | Eval::COMPILE_ONLY)?;
+
+        let _ = ctxt.set_import_meta(&val, true, true);
+
+        ctxt.eval_function(val)
+    } else {
+        ctxt.eval_script(buf, filename, flags)
+    }
+}
+
 fn main() -> Result<(), Error> {
     pretty_env_logger::init();
 
@@ -211,7 +228,7 @@ fn main() -> Result<(), Error> {
             if opt.load_jscalc {
                 debug!("load jscalc.js");
 
-                ctxt.eval_binary(&*ffi::QJSCALC, EvalBinary::empty())?;
+                ctxt.eval_binary(&*ffi::QJSCALC, false)?;
             }
         }
 
@@ -225,13 +242,14 @@ fn main() -> Result<(), Error> {
             debug!("import `std` and `os` module");
 
             // make 'std' and 'os' visible to non module code
-            ctxt.eval_script(
+            eval_buf(
+                &ctxt,
                 r#"
 import * as std from 'std';
 import * as os from 'os';
 
-std.global.std = std;
-std.global.os = os;
+globalThis.std = std;
+globalThis.os = os;
 "#,
                 "<input>",
                 Eval::MODULE,
@@ -243,18 +261,19 @@ std.global.os = os;
         let res = if let Some(expr) = opt.expr {
             debug!("eval expr: {}", expr);
 
-            ctxt.eval_script(expr, "<cmdline>", Eval::GLOBAL)
+            eval_buf(&ctxt, &expr, "<cmdline>", Eval::GLOBAL)
         } else if let Some(filename) = opt.args.first() {
             debug!("eval file: {}", filename);
 
-            ctxt.eval_file(
-                Path::new(filename),
-                if opt.module || filename.ends_with(".mjs") {
+            let buf = qjs::load_file(filename)?;
+            let eval_flags =
+                if opt.module || filename.ends_with(".mjs") || qjs::detect_module(buf.as_str()) {
                     Eval::MODULE
                 } else {
                     Eval::GLOBAL
-                },
-            )
+                };
+
+            eval_buf(&ctxt, &buf, filename, eval_flags)
         } else {
             interactive = true;
 
@@ -277,7 +296,7 @@ std.global.os = os;
         }
 
         if interactive {
-            ctxt.eval_binary(&*ffi::REPL, EvalBinary::empty())?;
+            ctxt.eval_binary(&*ffi::REPL, false)?;
         }
 
         ctxt.std_loop();
