@@ -3,14 +3,10 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::slice;
 
-use failure::{format_err, Error};
+use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{
-    ffi, undefined,
-    value::{FALSE, TRUE},
-    Atom, ContextRef, Local, NewAtom, NewValue, Value,
-};
+use crate::{ffi, Atom, ContextRef, Local, NewAtom, NewValue, Value};
 
 bitflags! {
     /// Flags for property
@@ -87,7 +83,13 @@ impl GetProperty for u32 {
 impl GetProperty for Local<'_, ffi::JSAtom> {
     fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
         ctxt.bind(unsafe {
-            ffi::JS_GetPropertyInternal(ctxt.as_ptr(), this.raw(), **self, this.raw(), FALSE)
+            ffi::JS_GetPropertyInternal(
+                ctxt.as_ptr(),
+                this.raw(),
+                **self,
+                this.raw(),
+                ffi::FALSE_VALUE,
+            )
         })
         .check_undefined()
     }
@@ -115,11 +117,7 @@ impl SetProperty for u32 {
             ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.raw(), *self, val.new_value(ctxt))
         };
 
-        ctxt.check_error(ret).and_then(|ret| match ret {
-            TRUE => Ok(true),
-            FALSE => Ok(false),
-            _ => Err(format_err!("unexpected result: {}", ret)),
-        })
+        ctxt.check_bool(ret)
     }
 }
 
@@ -134,11 +132,7 @@ impl SetProperty for i64 {
             ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.raw(), *self, val.new_value(ctxt))
         };
 
-        ctxt.check_error(ret).and_then(|ret| match ret {
-            TRUE => Ok(true),
-            FALSE => Ok(false),
-            _ => Err(format_err!("unexpected result: {}", ret)),
-        })
+        ctxt.check_bool(ret)
     }
 }
 
@@ -263,9 +257,9 @@ where
                 ctxt.as_ptr(),
                 this.raw(),
                 atom,
-                val.map_or_else(|| undefined().raw(), |v| v.raw()),
-                getter.map_or_else(|| undefined().raw(), |v| v.raw()),
-                setter.map_or_else(|| undefined().raw(), |v| v.raw()),
+                val.map_or(ffi::UNDEFINED, |v| v.raw()),
+                getter.map_or(ffi::UNDEFINED, |v| v.raw()),
+                setter.map_or(ffi::UNDEFINED, |v| v.raw()),
                 flags.bits as i32,
             )
         };
@@ -381,8 +375,8 @@ where
                 ctxt.as_ptr(),
                 this.raw(),
                 atom,
-                getter.map_or_else(|| undefined().raw(), |v| v.raw()),
-                setter.map_or_else(|| undefined().raw(), |v| v.raw()),
+                getter.map_or(ffi::UNDEFINED, |v| v.raw()),
+                setter.map_or(ffi::UNDEFINED, |v| v.raw()),
                 flags.bits as i32,
             )
         };

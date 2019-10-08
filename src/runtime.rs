@@ -5,11 +5,7 @@ use std::ptr::{null_mut, NonNull};
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 
-use crate::{
-    ffi,
-    value::{FALSE, TRUE},
-    Value,
-};
+use crate::{ffi, value::ToBool, Value};
 
 pub use crate::ffi::{JSMallocFunctions as MallocFunctions, JSMemoryUsage as MemoryUsage};
 
@@ -88,11 +84,11 @@ impl RuntimeRef {
     }
 
     pub fn is_live_object(&self, obj: &Value) -> bool {
-        unsafe { ffi::JS_IsLiveObject(self.as_ptr(), obj.raw()) != FALSE }
+        unsafe { ffi::JS_IsLiveObject(self.as_ptr(), obj.raw()).to_bool() }
     }
 
     pub fn is_gc_swap(&self) -> bool {
-        unsafe { ffi::JS_IsInGCSweep(self.as_ptr()) != FALSE }
+        unsafe { ffi::JS_IsInGCSweep(self.as_ptr()).to_bool() }
     }
 
     /// Compute memory used by various object types.
@@ -118,11 +114,12 @@ impl RuntimeRef {
                         let func: fn(rt: &RuntimeRef) -> Interrupt = *(opaque as *mut _);
 
                         match func(rt) {
-                            Interrupt::Break => TRUE,
-                            Interrupt::Continue => FALSE,
+                            Interrupt::Break => true,
+                            Interrupt::Continue => false,
                         }
                     })
-                    .unwrap_or(TRUE)
+                    .unwrap_or(true)
+                    .to_bool()
                 }
 
                 ffi::JS_SetInterruptHandler(self.as_ptr(), Some(stub), func as *mut _)

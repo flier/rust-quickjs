@@ -1,6 +1,6 @@
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::FALSE, ContextRef, Local, Runtime, RuntimeRef, Value};
+use crate::{ffi, value::ToBool, ContextRef, Local, Runtime, RuntimeRef, Value};
 
 /// A globally allocated class ID.
 pub type ClassId = ffi::JSClassID;
@@ -20,12 +20,12 @@ impl Runtime {
 impl RuntimeRef {
     /// Register a new Javascript class.
     pub fn new_class(&self, class_id: ClassId, class_def: &ClassDef) -> bool {
-        unsafe { ffi::JS_NewClass(self.as_ptr(), class_id, class_def as *const _) != FALSE }
+        unsafe { ffi::JS_NewClass(self.as_ptr(), class_id, class_def as *const _).to_bool() }
     }
 
     /// Checks if a class ID has been registered.
     pub fn is_registered_class(&self, class_id: ClassId) -> bool {
-        unsafe { ffi::JS_IsRegisteredClass(self.as_ptr(), class_id) != FALSE }
+        unsafe { ffi::JS_IsRegisteredClass(self.as_ptr(), class_id).to_bool() }
     }
 }
 

@@ -252,7 +252,7 @@ impl ContextRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::{value::JS_TAG_INT, Context, ErrorKind, Runtime};
+    use crate::{ffi::JS_TAG_INT, Context, ErrorKind, Runtime};
 
     use super::*;
 

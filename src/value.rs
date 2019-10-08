@@ -11,7 +11,6 @@ use std::slice;
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-pub use crate::ffi::_bindgen_ty_1::*;
 use crate::{
     ffi,
     handle::{Bindable, Unbindable},
@@ -19,12 +18,48 @@ use crate::{
 };
 
 pub const ERR: i32 = -1;
-pub const TRUE: i32 = 1;
-pub const FALSE: i32 = 0;
+
+pub trait ToBool {
+    type Bool;
+
+    fn to_bool(self) -> Self::Bool;
+}
+
+impl ToBool for i32 {
+    type Bool = bool;
+
+    fn to_bool(self) -> bool {
+        self != ffi::FALSE_VALUE
+    }
+}
+
+impl ToBool for bool {
+    type Bool = i32;
+
+    fn to_bool(self) -> i32 {
+        if self {
+            ffi::TRUE_VALUE
+        } else {
+            ffi::FALSE_VALUE
+        }
+    }
+}
 
 /// `Value` represents a Javascript value which can be a primitive type or an object.
 #[repr(transparent)]
 pub struct Value(ffi::JSValue);
+
+impl Default for Value {
+    fn default() -> Self {
+        UNDEFINED
+    }
+}
+
+impl Default for &Value {
+    fn default() -> Self {
+        &UNDEFINED
+    }
+}
 
 impl Unbindable for Value {
     fn unbind(ctxt: &ContextRef, inner: Self) {
@@ -36,24 +71,28 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
             match self.tag() {
-                JS_TAG_BIG_INT => f.debug_tuple("BigInt").field(&self.u.ptr).finish(),
-                JS_TAG_BIG_FLOAT => f.debug_tuple("BigFloat").field(&self.u.ptr).finish(),
-                JS_TAG_SYMBOL => f.debug_tuple("Symbol").field(&self.u.ptr).finish(),
-                JS_TAG_STRING => f.debug_tuple("String").field(&self.u.ptr).finish(),
-                JS_TAG_MODULE => f.debug_tuple("Module").field(&self.u.ptr).finish(),
-                JS_TAG_FUNCTION_BYTECODE => f.debug_tuple("Function").field(&self.u.ptr).finish(),
-                JS_TAG_OBJECT => f.debug_tuple("Object").field(&self.u.ptr).finish(),
-                JS_TAG_INT => f.debug_tuple("Value").field(&self.u.int32).finish(),
-                JS_TAG_BOOL => f
+                ffi::JS_TAG_BIG_INT => f.debug_tuple("BigInt").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_BIG_FLOAT => f.debug_tuple("BigFloat").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_SYMBOL => f.debug_tuple("Symbol").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_STRING => f.debug_tuple("String").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_MODULE => f.debug_tuple("Module").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_FUNCTION_BYTECODE => {
+                    f.debug_tuple("Function").field(&self.u.ptr).finish()
+                }
+                ffi::JS_TAG_OBJECT => f.debug_tuple("Object").field(&self.u.ptr).finish(),
+                ffi::JS_TAG_INT => f.debug_tuple("Value").field(&self.u.int32).finish(),
+                ffi::JS_TAG_BOOL => f
                     .debug_tuple("Value")
-                    .field(&(self.u.int32 != FALSE))
+                    .field(&self.u.int32.to_bool())
                     .finish(),
-                JS_TAG_NULL => f.write_str("Null"),
-                JS_TAG_UNDEFINED => f.write_str("Undefined"),
-                JS_TAG_UNINITIALIZED => f.write_str("Uninitialized"),
-                JS_TAG_CATCH_OFFSET => f.debug_tuple("CatchOffset").field(&self.u.int32).finish(),
-                JS_TAG_EXCEPTION => f.write_str("Exception"),
-                JS_TAG_FLOAT64 => f.debug_tuple("Value").field(&self.u.float64).finish(),
+                ffi::JS_TAG_NULL => f.write_str("Null"),
+                ffi::JS_TAG_UNDEFINED => f.write_str("Undefined"),
+                ffi::JS_TAG_UNINITIALIZED => f.write_str("Uninitialized"),
+                ffi::JS_TAG_CATCH_OFFSET => {
+                    f.debug_tuple("CatchOffset").field(&self.u.int32).finish()
+                }
+                ffi::JS_TAG_EXCEPTION => f.write_str("Exception"),
+                ffi::JS_TAG_FLOAT64 => f.debug_tuple("Value").field(&self.u.float64).finish(),
                 tag => f.debug_struct("Value").field("tag", &tag).finish(),
             }
         }
@@ -223,31 +262,31 @@ impl ContextRef {
     }
 
     pub fn nan(&self) -> Local<Value> {
-        self.bind(nan())
+        self.bind(NAN)
     }
 
     pub fn null(&self) -> Local<Value> {
-        self.bind(null())
+        self.bind(NULL)
     }
 
     pub fn undefined(&self) -> Local<Value> {
-        self.bind(undefined())
+        self.bind(UNDEFINED)
     }
 
     pub fn false_value(&self) -> Local<Value> {
-        self.bind(false_value())
+        self.bind(FALSE)
     }
 
     pub fn true_value(&self) -> Local<Value> {
-        self.bind(true_value())
+        self.bind(TRUE)
     }
 
     pub fn exception(&self) -> Local<Value> {
-        self.bind(exception())
+        self.bind(EXCEPTION)
     }
 
     pub fn uninitialized(&self) -> Local<Value> {
-        self.bind(uninitialized())
+        self.bind(UNINITIALIZED)
     }
 
     pub fn new_value<T: NewValue>(&self, s: T) -> Value {
@@ -275,7 +314,7 @@ impl ContextRef {
     }
 
     pub fn new_catch_offset(&self, off: i32) -> Value {
-        Value(mkval(JS_TAG_CATCH_OFFSET, off))
+        Value(ffi::mkval(ffi::JS_TAG_CATCH_OFFSET, off))
     }
 
     #[cfg(feature = "bignum")]
@@ -289,57 +328,50 @@ impl ContextRef {
     }
 
     pub fn to_bool(&self, val: &Value) -> Option<bool> {
-        match unsafe { ffi::JS_ToBool(self.as_ptr(), val.0) } {
-            ERR => None,
-            FALSE => Some(false),
-            _ => Some(true),
-        }
+        self.check_error(unsafe { ffi::JS_ToBool(self.as_ptr(), val.0) })
+            .ok()
+            .map(ToBool::to_bool)
     }
 
     pub fn to_int32(&self, val: &Value) -> Option<i32> {
         let mut n = 0;
 
-        match unsafe { ffi::JS_ToInt32(self.as_ptr(), &mut n, val.0) } {
-            ERR => None,
-            _ => Some(n),
-        }
+        self.check_error(unsafe { ffi::JS_ToInt32(self.as_ptr(), &mut n, val.0) })
+            .ok()
+            .map(|_| n)
     }
 
     pub fn to_int64(&self, val: &Value) -> Option<i64> {
         let mut n = 0;
 
-        match unsafe { ffi::JS_ToInt64(self.as_ptr(), &mut n, val.0) } {
-            ERR => None,
-            _ => Some(n),
-        }
+        self.check_error(unsafe { ffi::JS_ToInt64(self.as_ptr(), &mut n, val.0) })
+            .ok()
+            .map(|_| n)
     }
 
     pub fn to_index(&self, val: &Value) -> Option<u64> {
         let mut n = 0;
 
-        match unsafe { ffi::JS_ToIndex(self.as_ptr(), &mut n, val.0) } {
-            ERR => None,
-            _ => Some(n),
-        }
+        self.check_error(unsafe { ffi::JS_ToIndex(self.as_ptr(), &mut n, val.0) })
+            .ok()
+            .map(|_| n)
     }
 
     pub fn to_float64(&self, val: &Value) -> Option<f64> {
         let mut n = 0.0;
 
-        match unsafe { ffi::JS_ToFloat64(self.as_ptr(), &mut n, val.0) } {
-            ERR => None,
-            _ => Some(n),
-        }
+        self.check_error(unsafe { ffi::JS_ToFloat64(self.as_ptr(), &mut n, val.0) })
+            .ok()
+            .map(|_| n)
     }
 
     #[cfg(feature = "bignum")]
     pub fn to_bigint64(&self, val: &Value) -> Option<i64> {
         let mut n = 0;
 
-        match unsafe { ffi::JS_ToBigInt64(self.as_ptr(), &mut n, val.0) } {
-            ERR => None,
-            _ => Some(n),
-        }
+        self.check_error(unsafe { ffi::JS_ToBigInt64(self.as_ptr(), &mut n, val.0) })
+            .ok()
+            .map(|_| n)
     }
 
     pub fn to_str(&self, val: &Value) -> Value {
@@ -355,7 +387,7 @@ impl ContextRef {
         let mut len = 0;
 
         unsafe {
-            let p = ffi::JS_ToCStringLen2(self.as_ptr(), &mut len, val.0, FALSE);
+            let p = ffi::JS_ToCStringLen2(self.as_ptr(), &mut len, val.0, ffi::FALSE_VALUE);
 
             if p.is_null() {
                 None
@@ -391,13 +423,13 @@ where
 
 impl From<bool> for Value {
     fn from(v: bool) -> Self {
-        Value(mkval(JS_TAG_BOOL, if v { TRUE } else { FALSE }))
+        Value(ffi::mkval(ffi::JS_TAG_BOOL, v.to_bool()))
     }
 }
 
 impl From<i32> for Value {
     fn from(v: i32) -> Self {
-        Value(mkval(JS_TAG_INT, v))
+        Value(ffi::mkval(ffi::JS_TAG_INT, v))
     }
 }
 
@@ -405,7 +437,7 @@ impl From<f64> for Value {
     fn from(v: f64) -> Self {
         Value(ffi::JSValue {
             u: ffi::JSValueUnion { float64: v },
-            tag: JS_TAG_FLOAT64 as i64,
+            tag: ffi::JS_TAG_FLOAT64 as i64,
         })
     }
 }
@@ -601,53 +633,13 @@ impl<T: ExtractValue + PartialOrd> PartialOrd<T> for Local<'_, Value> {
     }
 }
 
-const fn mkval(tag: i32, val: i32) -> ffi::JSValue {
-    ffi::JSValue {
-        tag: tag as i64,
-        u: ffi::JSValueUnion { int32: val },
-    }
-}
-
-#[allow(dead_code)]
-const fn mkptr<T>(tag: i32, val: *mut T) -> ffi::JSValue {
-    ffi::JSValue {
-        tag: tag as i64,
-        u: ffi::JSValueUnion { ptr: val as *mut _ },
-    }
-}
-
-pub const fn nan() -> Value {
-    Value(ffi::JSValue {
-        u: ffi::JSValueUnion {
-            float64: std::f64::NAN,
-        },
-        tag: JS_TAG_FLOAT64 as i64,
-    })
-}
-
-pub const fn null() -> Value {
-    Value(mkval(JS_TAG_NULL, 0))
-}
-
-pub const fn undefined() -> Value {
-    Value(mkval(JS_TAG_UNDEFINED, 0))
-}
-
-pub const fn false_value() -> Value {
-    Value(mkval(JS_TAG_BOOL, FALSE))
-}
-
-pub const fn true_value() -> Value {
-    Value(mkval(JS_TAG_BOOL, TRUE))
-}
-
-pub const fn exception() -> Value {
-    Value(mkval(JS_TAG_EXCEPTION, 0))
-}
-
-pub const fn uninitialized() -> Value {
-    Value(mkval(JS_TAG_UNINITIALIZED, 0))
-}
+pub const NAN: Value = Value(ffi::NAN);
+pub const NULL: Value = Value(ffi::NULL);
+pub const UNDEFINED: Value = Value(ffi::UNDEFINED);
+pub const FALSE: Value = Value(ffi::FALSE);
+pub const TRUE: Value = Value(ffi::TRUE);
+pub const EXCEPTION: Value = Value(ffi::EXCEPTION);
+pub const UNINITIALIZED: Value = Value(ffi::UNINITIALIZED);
 
 impl Value {
     pub fn new(value: ffi::JSValue) -> Option<Self> {
@@ -669,57 +661,57 @@ impl Value {
     }
 
     pub fn is_number(&self) -> bool {
-        unsafe { ffi::JS_IsNumber(self.raw()) != FALSE }
+        unsafe { ffi::JS_IsNumber(self.raw()).to_bool() }
     }
 
     pub fn is_integer(&self) -> bool {
         let tag = self.tag();
 
-        tag == JS_TAG_INT || tag == JS_TAG_BIG_INT
+        tag == ffi::JS_TAG_INT || tag == ffi::JS_TAG_BIG_INT
     }
 
     pub fn is_big_float(&self) -> bool {
-        self.tag() == JS_TAG_BIG_FLOAT
+        self.tag() == ffi::JS_TAG_BIG_FLOAT
     }
 
     pub fn is_bool(&self) -> bool {
-        self.tag() == JS_TAG_BOOL
+        self.tag() == ffi::JS_TAG_BOOL
     }
 
     pub fn is_null(&self) -> bool {
-        self.tag() == JS_TAG_NULL
+        self.tag() == ffi::JS_TAG_NULL
     }
 
     pub fn is_undefined(&self) -> bool {
-        self.tag() == JS_TAG_UNDEFINED
+        self.tag() == ffi::JS_TAG_UNDEFINED
     }
 
     pub fn is_exception(&self) -> bool {
-        self.tag() == JS_TAG_EXCEPTION
+        self.tag() == ffi::JS_TAG_EXCEPTION
     }
 
     pub fn is_uninitialized(&self) -> bool {
-        self.tag() == JS_TAG_UNINITIALIZED
+        self.tag() == ffi::JS_TAG_UNINITIALIZED
     }
 
     pub fn is_string(&self) -> bool {
-        self.tag() == JS_TAG_STRING
+        self.tag() == ffi::JS_TAG_STRING
     }
 
     pub fn is_symbol(&self) -> bool {
-        self.tag() == JS_TAG_SYMBOL
+        self.tag() == ffi::JS_TAG_SYMBOL
     }
 
     pub fn is_object(&self) -> bool {
-        self.tag() == JS_TAG_OBJECT
+        self.tag() == ffi::JS_TAG_OBJECT
     }
 
     pub fn is_module(&self) -> bool {
-        self.tag() == JS_TAG_MODULE
+        self.tag() == ffi::JS_TAG_MODULE
     }
 
     pub fn as_int(&self) -> Option<i32> {
-        if self.tag() == JS_TAG_INT {
+        if self.tag() == ffi::JS_TAG_INT {
             Some(unsafe { self.u.int32 })
         } else {
             None
@@ -727,7 +719,7 @@ impl Value {
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        if self.tag() == JS_TAG_BOOL {
+        if self.tag() == ffi::JS_TAG_BOOL {
             Some(unsafe { self.u.int32 != 0 })
         } else {
             None
@@ -735,7 +727,7 @@ impl Value {
     }
 
     pub fn as_float(&self) -> Option<f64> {
-        if self.tag() == JS_TAG_FLOAT64 {
+        if self.tag() == ffi::JS_TAG_FLOAT64 {
             Some(unsafe { self.u.float64 })
         } else {
             None
@@ -743,7 +735,7 @@ impl Value {
     }
 
     pub fn as_object(&self) -> Option<NonNull<ffi::JSObject>> {
-        if self.tag() == JS_TAG_OBJECT {
+        if self.tag() == ffi::JS_TAG_OBJECT {
             Some(self.as_ptr())
         } else {
             None
@@ -771,7 +763,7 @@ impl Value {
     }
 
     fn has_ref_cnt(&self) -> bool {
-        (self.tag() as u32) >= (JS_TAG_FIRST as u32)
+        (self.tag() as u32) >= (ffi::JS_TAG_FIRST as u32)
     }
 }
 

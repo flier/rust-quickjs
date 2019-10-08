@@ -7,7 +7,7 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{
     ffi,
-    value::{ERR, FALSE, TRUE},
+    value::{ToBool, ERR},
     ContextRef, Local, NewValue, Prop, Value,
 };
 
@@ -177,7 +177,7 @@ impl<'a> Local<'a, Value> {
 
 impl ContextRef {
     pub fn is_error(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsError(self.as_ptr(), val.raw()) != FALSE }
+        unsafe { ffi::JS_IsError(self.as_ptr(), val.raw()).to_bool() }
     }
 
     pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
@@ -190,7 +190,7 @@ impl ContextRef {
     }
 
     pub fn enable_is_error_property(&self, enable: bool) {
-        unsafe { ffi::JS_EnableIsErrorProperty(self.as_ptr(), if enable { TRUE } else { FALSE }) }
+        unsafe { ffi::JS_EnableIsErrorProperty(self.as_ptr(), enable.to_bool()) }
     }
 
     pub fn reset_uncatchable_error(&self) {
@@ -332,11 +332,7 @@ impl ContextRef {
     }
 
     pub fn check_bool(&self, ret: i32) -> Result<bool, Error> {
-        self.check_error(ret).and_then(|ret| match ret {
-            TRUE => Ok(true),
-            FALSE => Ok(false),
-            _ => Err(format_err!("unexpected result: {}", ret)),
-        })
+        self.check_error(ret).map(ToBool::to_bool)
     }
 
     fn take_exception(&self) -> Result<ErrorKind, Error> {

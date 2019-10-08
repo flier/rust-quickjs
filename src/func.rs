@@ -1,7 +1,7 @@
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, undefined, value::FALSE, ContextRef, Local, NewAtom, NewValue, Value};
+use crate::{ffi, value::ToBool, ContextRef, Local, NewAtom, NewValue, Value};
 
 pub trait Args {
     type Values: AsRef<[ffi::JSValue]>;
@@ -139,11 +139,11 @@ impl<'a> Local<'a, Value> {
 
 impl ContextRef {
     pub fn is_function(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.raw()) != FALSE }
+        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.raw()).to_bool() }
     }
 
     pub fn is_constructor(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.raw()) != FALSE }
+        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.raw()).to_bool() }
     }
 
     pub fn call<T: Args>(
@@ -159,7 +159,7 @@ impl ContextRef {
                 ffi::JS_Call(
                     self.as_ptr(),
                     func.raw(),
-                    this.map_or_else(|| undefined().raw(), |v| v.raw()),
+                    this.map_or(ffi::UNDEFINED, |v| v.raw()),
                     args.len() as i32,
                     args.as_ptr() as *mut _,
                 )
@@ -231,7 +231,7 @@ impl ContextRef {
             ffi::JS_CallConstructor2(
                 self.as_ptr(),
                 func.raw(),
-                new_target.map_or_else(|| undefined().raw(), |v| v.raw()),
+                new_target.map_or(ffi::UNDEFINED, |v| v.raw()),
                 args.len() as i32,
                 args.as_ptr() as *mut _,
             )

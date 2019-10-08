@@ -113,8 +113,7 @@ pub use prop::{
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, MemoryUsage, Runtime, RuntimeRef};
 pub use value::{
-    exception, false_value, nan, null, true_value, undefined, uninitialized, ExtractValue,
-    NewValue, Value,
+    ExtractValue, NewValue, Value, EXCEPTION, FALSE, NAN, NULL, TRUE, UNDEFINED, UNINITIALIZED,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

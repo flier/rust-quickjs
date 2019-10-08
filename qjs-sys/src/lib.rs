@@ -57,6 +57,51 @@ cfg_if! {
     }
 }
 
+pub const TRUE_VALUE: i32 = 1;
+pub const FALSE_VALUE: i32 = 0;
+
+pub use crate::_bindgen_ty_1::*;
+
+pub const fn mkval(tag: i32, val: i32) -> JSValue {
+    JSValue {
+        tag: tag as i64,
+        u: JSValueUnion { int32: val },
+    }
+}
+
+pub const fn mkptr<T>(tag: i32, val: *mut T) -> JSValue {
+    JSValue {
+        tag: tag as i64,
+        u: JSValueUnion { ptr: val as *mut _ },
+    }
+}
+
+pub const NAN: JSValue = JSValue {
+    u: JSValueUnion {
+        float64: std::f64::NAN,
+    },
+    tag: JS_TAG_FLOAT64 as i64,
+};
+
+pub const NULL: JSValue = mkval(JS_TAG_NULL, 0);
+pub const UNDEFINED: JSValue = mkval(JS_TAG_UNDEFINED, 0);
+pub const FALSE: JSValue = mkval(JS_TAG_BOOL, FALSE_VALUE);
+pub const TRUE: JSValue = mkval(JS_TAG_BOOL, TRUE_VALUE);
+pub const EXCEPTION: JSValue = mkval(JS_TAG_EXCEPTION, 0);
+pub const UNINITIALIZED: JSValue = mkval(JS_TAG_UNINITIALIZED, 0);
+
+impl Default for JSValue {
+    fn default() -> JSValue {
+        UNDEFINED
+    }
+}
+
+impl Default for &JSValue {
+    fn default() -> &'static JSValue {
+        &UNDEFINED
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

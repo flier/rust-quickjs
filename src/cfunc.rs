@@ -9,7 +9,7 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{
     ffi::{self, JSCFunctionEnum::*},
-    undefined, Args, ContextRef, ExtractValue, Local, NewValue, Prop, Value,
+    Args, ContextRef, ExtractValue, Local, NewValue, Prop, Value,
 };
 
 /// `CFunction` is a shortcut to easily add functions, setters and getters properties to a given object.
@@ -96,7 +96,7 @@ impl ContextRef {
 
                 func(ctxt, this, &*(args as *const _ as *const _)).new_value(ctxt)
             })
-            .unwrap_or_else(|_| undefined().into())
+            .unwrap_or_default()
         }
 
         trace!("new C function @ {:p}", &func);
@@ -203,7 +203,7 @@ macro_rules! new_func_value {
 
                         func().new_value(ctxt).into()
                     })
-                    .unwrap_or_else(|_| undefined().into())
+                    .unwrap_or_default()
                 }
 
                 ctxt.new_c_function_data(stub::<Ret>, 0, 0, ctxt.new_userdata(self))
@@ -241,7 +241,7 @@ macro_rules! new_func_value {
                             .new_value(&ctxt)
                             .into()
                     })
-                    .unwrap_or_else(|_| undefined().into())
+                    .unwrap_or_default()
                 }
 
                 ctxt.new_c_function_data(stub::<Ret, $($Arg),*>, 0, 0, ctxt.new_userdata(self))

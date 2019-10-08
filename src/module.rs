@@ -4,11 +4,7 @@ use std::ptr::{null_mut, NonNull};
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{
-    ffi,
-    value::{FALSE, TRUE},
-    Atom, ContextRef, Local, RuntimeRef, Value,
-};
+use crate::{ffi, value::ToBool, Atom, ContextRef, Local, RuntimeRef, Value};
 
 /// The C module definition.
 pub type ModuleDef = ffi::JSModuleDef;
@@ -47,7 +43,7 @@ impl RuntimeRef {
 pub fn detect_module<T: Into<Vec<u8>>>(input: T) -> bool {
     let input = input.into();
 
-    unsafe { ffi::JS_DetectModule(input.as_ptr() as *const _, input.len()) != FALSE }
+    unsafe { ffi::JS_DetectModule(input.as_ptr() as *const _, input.len()).to_bool() }
 }
 
 impl ContextRef {
@@ -90,8 +86,8 @@ impl ContextRef {
             ffi::js_module_set_import_meta(
                 self.as_ptr(),
                 module.raw(),
-                if use_realpath { TRUE } else { FALSE },
-                if is_main { TRUE } else { FALSE },
+                use_realpath.to_bool(),
+                is_main.to_bool(),
             )
         })
         .map(|_| ())

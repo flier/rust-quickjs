@@ -4,11 +4,7 @@ use std::slice::{self, SliceIndex};
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{
-    ffi,
-    value::{NewValue, FALSE, TRUE},
-    ContextRef, Local, Value,
-};
+use crate::{ffi, value::NewValue, ContextRef, Local, Value};
 
 /// `ArrayBuffer` represent a generic, fixed-length raw binary data buffer.
 #[repr(transparent)]
@@ -144,7 +140,7 @@ impl ContextRef {
                 buf.len(),
                 None,
                 ptr::null_mut(),
-                FALSE,
+                ffi::FALSE_VALUE,
             )
         }))
     }
@@ -162,7 +158,7 @@ impl ContextRef {
                 len,
                 None,
                 Box::into_raw(buf) as *mut _,
-                TRUE,
+                ffi::TRUE_VALUE,
             )
         }))
     }
