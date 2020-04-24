@@ -245,6 +245,12 @@ impl ContextRef {
         self.bind(v.0)
     }
 
+    pub fn to_local(&self, v: Value) -> Local<Value> {
+        let ret = self.clone_value(&v);
+        Value::unbind(&self, v);
+        ret
+    }
+
     pub fn free_value<T: Into<Value>>(&self, v: T) {
         let v = v.into();
 
