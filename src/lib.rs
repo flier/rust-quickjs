@@ -38,9 +38,9 @@
 //! ```
 //!
 //! The primitive types, including `bool`, `i32`, `i64`, `u64`, `f64`, `String` etc,
-//! and other type which implements `NewValue` trait could be used in the variable interpolation.
+//! and other type which implements `LazyValue` trait could be used in the variable interpolation.
 //!
-//! The function which parameters implements `ExtractValue` trait and output type implements `NewValue` trait
+//! The function which parameters implements `ExtractValue` trait and output type implements `LazyValue` trait
 //! can also be used in the variable interpolation.
 //!
 //! ```
@@ -95,6 +95,8 @@ mod stdlib;
 mod userdata;
 mod value;
 
+pub use ffi::{EXCEPTION, FALSE, NAN, NULL, TRUE, UNDEFINED, UNINITIALIZED};
+
 pub use arraybuf::{ArrayBuffer, SharedArrayBuffer};
 pub use atom::{Atom, NewAtom};
 pub use cfunc::{CFunc, CFunction, UnsafeCFunction, UnsafeCFunctionData, UnsafeCFunctionMagic};
@@ -103,7 +105,7 @@ pub use context::{Builder as ContextBuilder, Context, ContextRef};
 pub use error::ErrorKind;
 pub use eval::{eval, load_file, Eval, Source};
 pub use func::Args;
-pub use handle::{Bindable, Local, Unbindable};
+pub use handle::{Bindable, Local};
 pub use job::JobFunc;
 pub use module::{detect_module, ModuleDef, ModuleInitFunc, ModuleLoaderFunc, ModuleNormalizeFunc};
 pub use precompile::{ReadObj, WriteObj};
@@ -112,9 +114,7 @@ pub use prop::{
     GetProperty, HasProperty, Names as PropertyNames, Prop, SetProperty,
 };
 pub use runtime::{Interrupt, InterruptHandler, MallocFunctions, MemoryUsage, Runtime, RuntimeRef};
-pub use value::{
-    ExtractValue, NewValue, Value, EXCEPTION, FALSE, NAN, NULL, TRUE, UNDEFINED, UNINITIALIZED,
-};
+pub use value::{ExtractValue, LazyValue, Value};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

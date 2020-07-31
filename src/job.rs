@@ -29,17 +29,20 @@ impl RuntimeRef {
 
 impl ContextRef {
     pub fn enqueue_job<T: Args>(&self, job_func: JobFunc, args: T) -> Result<(), Error> {
-        let args = args.into_values(self);
-        let args = args.as_ref();
+        let mut args = args.into_values(self);
 
         self.check_error(unsafe {
             ffi::JS_EnqueueJob(
                 self.as_ptr(),
                 job_func,
                 args.len() as i32,
-                args.as_ptr() as *mut _,
+                args.as_mut_ptr() as *mut _,
             )
         })
-        .map(|_| ())
+        .map(|_| {
+            for v in args {
+                self.free_value(v);
+            }
+        })
     }
 }

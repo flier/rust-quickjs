@@ -9,11 +9,11 @@ use foreign_types::ForeignTypeRef;
 
 use crate::{
     ffi::{self, JSCFunctionEnum::*},
-    Args, ContextRef, ExtractValue, Local, NewValue, Prop, Value,
+    Args, Bindable, ContextRef, ExtractValue, LazyValue, Prop, Value,
 };
 
 /// `CFunction` is a shortcut to easily add functions, setters and getters properties to a given object.
-pub type CFunction<T> = fn(&ContextRef, Option<&Value>, &[Value]) -> T;
+pub type CFunction<T> = fn(&ContextRef, Option<ffi::JSValue>, &[ffi::JSValue]) -> T;
 
 /// Unsafe C function
 pub type UnsafeCFunction = unsafe extern "C" fn(
@@ -63,13 +63,13 @@ pub enum CFunc {
 
 impl ContextRef {
     /// Create a new C function.
-    pub fn new_c_function<T: NewValue>(
+    pub fn new_c_function<T: LazyValue>(
         &self,
         func: CFunction<T>,
         name: Option<&str>,
         length: usize,
-    ) -> Result<Local<Value>, Error> {
-        unsafe extern "C" fn stub<T: NewValue>(
+    ) -> Result<Value, Error> {
+        unsafe extern "C" fn stub<T: LazyValue>(
             ctx: *mut ffi::JSContext,
             this_val: ffi::JSValue,
             argc: c_int,
@@ -79,11 +79,9 @@ impl ContextRef {
         ) -> ffi::JSValue {
             panic::catch_unwind(|| {
                 let ctxt = ContextRef::from_ptr(ctx);
-                let this = Value::from(this_val);
-                let this = this.check_undefined();
+                let this = this_val.check_undefined();
                 let args = slice::from_raw_parts(argv, argc as usize);
-                let data = ptr::NonNull::new_unchecked(data);
-                let func = ctxt.get_userdata_unchecked::<CFunction<T>>(data.cast().as_ref());
+                let func = ctxt.get_userdata_unchecked::<CFunction<T>>(ptr::read(data));
                 let func = *func.as_ref();
 
                 trace!(
@@ -94,14 +92,15 @@ impl ContextRef {
                     magic
                 );
 
-                func(ctxt, this, &*(args as *const _ as *const _)).new_value(ctxt)
+                func(ctxt, this, args).new_value(ctxt)
             })
             .unwrap_or_default()
         }
 
         trace!("new C function @ {:p}", &func);
 
-        let func = self.new_c_function_data(stub::<T>, length, 0, self.new_userdata(func))?;
+        let data = self.new_userdata(func);
+        let func = self.new_c_function_data(stub::<T>, length, 0, data.into_inner())?;
 
         if let Some(name) = name {
             func.define_property_value("name", name, Prop::CONFIGURABLE)?;
@@ -118,9 +117,9 @@ impl ContextRef {
         length: usize,
         cproto: CFunc,
         magic: i32,
-    ) -> Result<Local<Value>, Error> {
+    ) -> Result<Value, Error> {
         let name = name.map(CString::new).transpose()?;
-        self.bind(unsafe {
+        unsafe {
             ffi::JS_NewCFunction2(
                 self.as_ptr(),
                 Some(*(&func as *const _ as *const _)),
@@ -129,7 +128,8 @@ impl ContextRef {
                 cproto as u32,
                 magic,
             )
-        })
+        }
+        .bind(self)
         .ok()
     }
 
@@ -141,9 +141,9 @@ impl ContextRef {
         length: usize,
         cproto: CFunc,
         magic: i32,
-    ) -> Result<Local<Value>, Error> {
+    ) -> Result<Value, Error> {
         let name = name.map(CString::new).transpose()?;
-        self.bind(unsafe {
+        unsafe {
             ffi::JS_NewCFunction2(
                 self.as_ptr(),
                 Some(func),
@@ -152,7 +152,8 @@ impl ContextRef {
                 cproto as u32,
                 magic,
             )
-        })
+        }
+        .bind(self)
         .ok()
     }
 
@@ -163,9 +164,8 @@ impl ContextRef {
         length: usize,
         magic: i32,
         data: T,
-    ) -> Result<Local<Value>, Error> {
-        let data = data.into_values(self);
-        let data = data.as_ref();
+    ) -> Result<Value, Error> {
+        let mut data = data.into_values(self);
         let func_obj = unsafe {
             ffi::JS_NewCFunctionData(
                 self.as_ptr(),
@@ -173,21 +173,21 @@ impl ContextRef {
                 length as i32,
                 magic,
                 data.len() as i32,
-                data.as_ptr() as *mut _,
+                data.as_mut_ptr() as *mut _,
             )
         };
         for v in data {
-            self.free_value(*v);
+            // self.free_value(v);
         }
-        self.bind(func_obj).ok()
+        func_obj.bind(self).ok()
     }
 }
 
 macro_rules! new_func_value {
     () => {
-        impl<Ret: NewValue> NewValue for fn() -> Ret {
+        impl<Ret: LazyValue> LazyValue for fn() -> Ret {
             fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-                unsafe extern "C" fn stub<Ret: NewValue>(
+                unsafe extern "C" fn stub<Ret: LazyValue>(
                     ctx: *mut ffi::JSContext,
                     _this_val: ffi::JSValue,
                     _argc: c_int,
@@ -197,8 +197,7 @@ macro_rules! new_func_value {
                 ) -> ffi::JSValue {
                     panic::catch_unwind(|| {
                         let ctxt = ContextRef::from_ptr(ctx);
-                        let data = ptr::NonNull::new_unchecked(data);
-                        let func = ctxt.get_userdata_unchecked::<fn() -> Ret>(data.cast().as_ref());
+                        let func = ctxt.get_userdata_unchecked::<fn() -> Ret>(ptr::read(data));
                         let func = *func.as_ref();
 
                         func().new_value(ctxt).into()
@@ -216,9 +215,9 @@ macro_rules! new_func_value {
     };
 
     ($($Arg:ident)+) => {
-        impl<Ret: NewValue, $($Arg : ExtractValue),*> NewValue for fn($( $Arg ),*) -> Ret {
+        impl<Ret: LazyValue, $($Arg : ExtractValue),*> LazyValue for fn($( $Arg ),*) -> Ret {
             fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
-                unsafe extern "C" fn stub<Ret: NewValue, $($Arg : ExtractValue),*>(
+                unsafe extern "C" fn stub<Ret: LazyValue, $($Arg : ExtractValue),*>(
                     ctx: *mut ffi::JSContext,
                     _this_val: ffi::JSValue,
                     argc: c_int,
@@ -228,14 +227,13 @@ macro_rules! new_func_value {
                 ) -> ffi::JSValue {
                     panic::catch_unwind(|| {
                         let ctxt = ContextRef::from_ptr(ctx);
-                        let data = ptr::NonNull::new_unchecked(data);
-                        let func = ctxt.get_userdata_unchecked::<fn($( $Arg ),*) -> Ret>(data.cast().as_ref());
+                        let func = ctxt.get_userdata_unchecked::<fn($( $Arg ),*) -> Ret>(ptr::read(data));
                         let func = *func.as_ref();
                         let args = slice::from_raw_parts(argv, argc as usize);
                         let mut iter = args.iter();
 
                         func($({
-                            let value = ctxt.bind(*iter.next().unwrap());
+                            let value = iter.next().unwrap().bind(ctxt);
                             <$Arg as ExtractValue>::extract_value(&value).unwrap()
                         }),*)
                             .new_value(&ctxt)
@@ -270,7 +268,7 @@ new_func_value! { T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Eval, ExtractValue, Runtime};
+    use crate::{Bindable, Context, Eval, ExtractValue, Runtime};
 
     #[test]
     fn cfunc() {
@@ -283,7 +281,7 @@ mod tests {
                 |ctxt, _this, args| {
                     format!(
                         "hello {}",
-                        ctxt.to_cstring(&args[0]).unwrap().to_string_lossy()
+                        args[0].bind(ctxt).to_cstring().unwrap().to_string_lossy()
                     )
                 },
                 Some("hello"),

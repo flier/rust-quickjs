@@ -49,6 +49,10 @@ impl ContextRef {
 }
 
 impl RuntimeRef {
+    pub fn std_init_handlers(&self) {
+        unsafe { ffi::js_std_init_handlers(self.as_ptr()) }
+    }
+
     pub fn std_free_handlers(&self) {
         unsafe { ffi::js_std_free_handlers(self.as_ptr()) }
     }

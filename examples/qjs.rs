@@ -15,7 +15,7 @@ use failure::Error;
 use foreign_types::ForeignTypeRef;
 use structopt::StructOpt;
 
-use qjs::{ffi, Context, ContextRef, ErrorKind, Eval, Local, MallocFunctions, Runtime, Value};
+use qjs::{ffi, Context, ContextRef, ErrorKind, Eval, MallocFunctions, Runtime, Value};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "qjs", about = "QuickJS stand alone interpreter")]
@@ -183,7 +183,7 @@ fn eval_buf<'a>(
     buf: &str,
     filename: &str,
     flags: Eval,
-) -> Result<Local<'a, Value>, Error> {
+) -> Result<Value<'a>, Error> {
     if flags.contains(Eval::MODULE) {
         let val = ctxt.eval_script(buf, filename, flags | Eval::COMPILE_ONLY)?;
 

@@ -3,7 +3,7 @@ use std::ptr::{null_mut, NonNull};
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ClassId, ContextRef, Local, Runtime, Value};
+use crate::{ffi, Bindable, ClassId, ContextRef, Runtime, Value};
 
 lazy_static! {
     static ref RUNTIME_USERDATA_CLASS_ID: ClassId = Runtime::new_class_id();
@@ -37,18 +37,17 @@ impl Runtime {
 }
 
 impl ContextRef {
-    pub fn new_userdata<T>(&self, v: T) -> Local<'_, Value> {
+    pub fn new_userdata<T>(&self, v: T) -> Value<'_> {
         let obj = self.new_object_class(Runtime::userdata_class_id());
         let ptr = Box::into_raw(Box::new(v));
 
         trace!("new userdata {:p} @ {:?}", ptr, obj.as_ptr::<()>());
 
         obj.set_opaque(ptr);
-
-        self.bind(obj)
+        obj.bind(self)
     }
 
-    pub fn get_userdata_unchecked<T>(&self, obj: &Value) -> NonNull<T> {
+    pub fn get_userdata_unchecked<T>(&self, obj: ffi::JSValue) -> NonNull<T> {
         let ptr = self.get_opaque(obj, Runtime::userdata_class_id());
 
         trace!("got userdata {:p} @ {:?}", ptr, obj.as_ptr::<()>());
@@ -57,24 +56,18 @@ impl ContextRef {
     }
 }
 
-impl Value {
+impl Value<'_> {
     pub fn set_opaque<T>(&self, opaque: *mut T) {
-        unsafe { ffi::JS_SetOpaque(self.raw(), opaque as *mut _) }
+        unsafe { ffi::JS_SetOpaque(self.inner(), opaque as *mut _) }
     }
 
     pub fn get_opaque<T>(&self, class_id: ClassId) -> *mut T {
-        unsafe { ffi::JS_GetOpaque(self.raw(), class_id) as *mut _ }
-    }
-}
-
-impl Local<'_, Value> {
-    pub fn get_opaque<T>(&self, class_id: ClassId) -> *mut T {
-        self.ctxt.get_opaque(self, class_id)
+        unsafe { ffi::JS_GetOpaque(self.inner(), class_id) as *mut _ }
     }
 }
 
 impl ContextRef {
-    pub fn get_opaque<T>(&self, obj: &Value, class_id: ClassId) -> *mut T {
-        unsafe { ffi::JS_GetOpaque2(self.as_ptr(), obj.raw(), class_id) as *mut _ }
+    pub fn get_opaque<T>(&self, obj: ffi::JSValue, class_id: ClassId) -> *mut T {
+        unsafe { ffi::JS_GetOpaque2(self.as_ptr(), obj, class_id) as *mut _ }
     }
 }

@@ -16,7 +16,7 @@ foreign_type! {
     ///
     /// Several runtimes can exist at the same time but they cannot exchange objects.
     /// Inside a given runtime, no multi-threading is supported.
-    pub type Runtime : Send {
+    pub unsafe type Runtime : Send {
         type CType = ffi::JSRuntime;
 
         fn drop = ffi::JS_FreeRuntime;
@@ -76,6 +76,15 @@ impl RuntimeRef {
         self
     }
 
+    pub fn set_gc_max_stack_size(&self, gc_max_stack: usize) -> &Self {
+        trace!("{:?} set GC max stack size to {}", self, gc_max_stack);
+
+        unsafe {
+            ffi::JS_SetMaxStackSize(self.as_ptr(), gc_max_stack);
+        }
+        self
+    }
+
     /// Force to run GC to a given `Runtime`.
     pub fn run_gc(&self) {
         trace!("{:?} run GC", self);
@@ -84,11 +93,7 @@ impl RuntimeRef {
     }
 
     pub fn is_live_object(&self, obj: &Value) -> bool {
-        unsafe { ffi::JS_IsLiveObject(self.as_ptr(), obj.raw()).to_bool() }
-    }
-
-    pub fn is_gc_swap(&self) -> bool {
-        unsafe { ffi::JS_IsInGCSweep(self.as_ptr()).to_bool() }
+        unsafe { ffi::JS_IsLiveObject(self.as_ptr(), obj.inner()).to_bool() }
     }
 
     /// Compute memory used by various object types.
@@ -127,6 +132,22 @@ impl RuntimeRef {
                 ffi::JS_SetInterruptHandler(self.as_ptr(), None, null_mut())
             }
         }
+    }
+
+    pub fn userdata<T>(&self) -> Option<NonNull<T>> {
+        NonNull::new(unsafe { ffi::JS_GetRuntimeOpaque(self.as_ptr()) } as *mut _)
+    }
+
+    pub fn set_userdata<T>(&self, userdata: Option<NonNull<T>>) -> &Self {
+        trace!("{:?} set userdata to {:?}", self, userdata);
+
+        unsafe {
+            ffi::JS_SetRuntimeOpaque(
+                self.as_ptr(),
+                userdata.map_or_else(null_mut, |p| p.as_ptr() as *mut _),
+            );
+        }
+        self
     }
 }
 

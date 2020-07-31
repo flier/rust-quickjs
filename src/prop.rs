@@ -6,7 +6,7 @@ use std::slice;
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, Atom, ContextRef, Local, NewAtom, NewValue, Value};
+use crate::{ffi, Atom, Bindable, ContextRef, LazyValue, Local, NewAtom, Value};
 
 bitflags! {
     /// Flags for property
@@ -57,40 +57,38 @@ bitflags! {
 /// Get a property value on an object.
 pub trait GetProperty {
     /// Get a property value on an object.
-    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>>;
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Value<'a>>;
 }
 
 impl GetProperty for &str {
-    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        ctxt.bind(unsafe {
-            ffi::JS_GetPropertyStr(
-                ctxt.as_ptr(),
-                this.raw(),
-                CString::new(*self).expect("prop").as_ptr(),
-            )
-        })
-        .check_undefined()
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Value<'a>> {
+        let prop = CString::new(*self).expect("prop");
+        unsafe { ffi::JS_GetPropertyStr(ctxt.as_ptr(), this.inner(), prop.as_ptr()) }
+            .bind(ctxt)
+            .check_undefined()
     }
 }
 
 impl GetProperty for u32 {
-    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        ctxt.bind(unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.raw(), *self) })
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Value<'a>> {
+        unsafe { ffi::JS_GetPropertyUint32(ctxt.as_ptr(), this.inner(), *self) }
+            .bind(ctxt)
             .check_undefined()
     }
 }
 
 impl GetProperty for Local<'_, ffi::JSAtom> {
-    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Local<'a, Value>> {
-        ctxt.bind(unsafe {
+    fn get_property<'a>(&self, ctxt: &'a ContextRef, this: &Value) -> Option<Value<'a>> {
+        unsafe {
             ffi::JS_GetPropertyInternal(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 **self,
-                this.raw(),
+                this.inner(),
                 ffi::FALSE_VALUE,
             )
-        })
+        }
+        .bind(ctxt)
         .check_undefined()
     }
 }
@@ -98,7 +96,7 @@ impl GetProperty for Local<'_, ffi::JSAtom> {
 /// Set a property value on an object.
 pub trait SetProperty {
     /// Set a property value on an object.
-    fn set_property<T: NewValue>(
+    fn set_property<T: LazyValue>(
         &self,
         ctxt: &ContextRef,
         this: &Value,
@@ -107,14 +105,14 @@ pub trait SetProperty {
 }
 
 impl SetProperty for u32 {
-    fn set_property<T: NewValue>(
+    fn set_property<T: LazyValue>(
         &self,
         ctxt: &ContextRef,
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
         let ret = unsafe {
-            ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.raw(), *self, val.new_value(ctxt))
+            ffi::JS_SetPropertyUint32(ctxt.as_ptr(), this.inner(), *self, val.new_value(ctxt))
         };
 
         ctxt.check_bool(ret)
@@ -122,14 +120,14 @@ impl SetProperty for u32 {
 }
 
 impl SetProperty for i64 {
-    fn set_property<T: NewValue>(
+    fn set_property<T: LazyValue>(
         &self,
         ctxt: &ContextRef,
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
         let ret = unsafe {
-            ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.raw(), *self, val.new_value(ctxt))
+            ffi::JS_SetPropertyInt64(ctxt.as_ptr(), this.inner(), *self, val.new_value(ctxt))
         };
 
         ctxt.check_bool(ret)
@@ -137,25 +135,21 @@ impl SetProperty for i64 {
 }
 
 impl SetProperty for &str {
-    fn set_property<T: NewValue>(
+    fn set_property<T: LazyValue>(
         &self,
         ctxt: &ContextRef,
         this: &Value,
         val: T,
     ) -> Result<bool, Error> {
+        let s = CString::new(*self)?;
         ctxt.check_bool(unsafe {
-            ffi::JS_SetPropertyStr(
-                ctxt.as_ptr(),
-                this.raw(),
-                CString::new(*self)?.as_ptr(),
-                val.new_value(ctxt),
-            )
+            ffi::JS_SetPropertyStr(ctxt.as_ptr(), this.inner(), s.as_ptr(), val.new_value(ctxt))
         })
     }
 }
 
 impl SetProperty for Local<'_, ffi::JSAtom> {
-    fn set_property<T: NewValue>(
+    fn set_property<T: LazyValue>(
         &self,
         ctxt: &ContextRef,
         this: &Value,
@@ -164,7 +158,7 @@ impl SetProperty for Local<'_, ffi::JSAtom> {
         ctxt.check_bool(unsafe {
             ffi::JS_SetPropertyInternal(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 **self,
                 val.new_value(ctxt),
                 ffi::JS_PROP_THROW as i32,
@@ -185,7 +179,7 @@ where
 {
     fn has_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
         let atom = self.new_atom(ctxt);
-        let ret = unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.raw(), atom) };
+        let ret = unsafe { ffi::JS_HasProperty(ctxt.as_ptr(), this.inner(), atom) };
 
         ctxt.free_atom(atom);
         ctxt.check_bool(ret)
@@ -207,7 +201,7 @@ where
     fn delete_property(self, ctxt: &ContextRef, this: &Value) -> Result<bool, Error> {
         let atom = self.new_atom(ctxt);
         let ret = unsafe {
-            ffi::JS_DeleteProperty(ctxt.as_ptr(), this.raw(), atom, ffi::JS_PROP_THROW as i32)
+            ffi::JS_DeleteProperty(ctxt.as_ptr(), this.inner(), atom, ffi::JS_PROP_THROW as i32)
         };
 
         ctxt.free_atom(atom);
@@ -255,11 +249,11 @@ where
         let ret = unsafe {
             ffi::JS_DefineProperty(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 atom,
-                val.map_or(ffi::UNDEFINED, |v| v.raw()),
-                getter.map_or(ffi::UNDEFINED, |v| v.raw()),
-                setter.map_or(ffi::UNDEFINED, |v| v.raw()),
+                val.map_or(ffi::UNDEFINED, |v| v.inner()),
+                getter.map_or(ffi::UNDEFINED, |v| v.inner()),
+                setter.map_or(ffi::UNDEFINED, |v| v.inner()),
                 flags.bits as i32,
             )
         };
@@ -270,7 +264,7 @@ where
 
 pub trait DefinePropertyValue {
     /// Defines a new property with value directly on an object, or modifies an existing property on an object.
-    fn define_property<T: NewValue>(
+    fn define_property<T: LazyValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -280,7 +274,7 @@ pub trait DefinePropertyValue {
 }
 
 impl DefinePropertyValue for u32 {
-    fn define_property<T: NewValue>(
+    fn define_property<T: LazyValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -290,7 +284,7 @@ impl DefinePropertyValue for u32 {
         ctxt.check_bool(unsafe {
             ffi::JS_DefinePropertyValueUint32(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 self,
                 val.new_value(ctxt),
                 flags.bits as i32,
@@ -300,18 +294,19 @@ impl DefinePropertyValue for u32 {
 }
 
 impl DefinePropertyValue for &'_ str {
-    fn define_property<T: NewValue>(
+    fn define_property<T: LazyValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
         val: T,
         flags: Prop,
     ) -> Result<bool, Error> {
+        let s = CString::new(self)?;
         ctxt.check_bool(unsafe {
             ffi::JS_DefinePropertyValueStr(
                 ctxt.as_ptr(),
-                this.raw(),
-                CString::new(self)?.as_ptr(),
+                this.inner(),
+                s.as_ptr(),
                 val.new_value(ctxt),
                 flags.bits as i32,
             )
@@ -320,7 +315,7 @@ impl DefinePropertyValue for &'_ str {
 }
 
 impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
-    fn define_property<T: NewValue>(
+    fn define_property<T: LazyValue>(
         self,
         ctxt: &ContextRef,
         this: &Value,
@@ -330,7 +325,7 @@ impl DefinePropertyValue for Local<'_, ffi::JSAtom> {
         ctxt.check_bool(unsafe {
             ffi::JS_DefinePropertyValue(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 *self,
                 val.new_value(ctxt),
                 flags.bits as i32,
@@ -373,10 +368,10 @@ where
         let ret = unsafe {
             ffi::JS_DefinePropertyGetSet(
                 ctxt.as_ptr(),
-                this.raw(),
+                this.inner(),
                 atom,
-                getter.map_or(ffi::UNDEFINED, |v| v.raw()),
-                setter.map_or(ffi::UNDEFINED, |v| v.raw()),
+                getter.map_or(ffi::UNDEFINED, |v| v.inner()),
+                setter.map_or(ffi::UNDEFINED, |v| v.inner()),
                 flags.bits as i32,
             )
         };
@@ -391,11 +386,11 @@ pub struct Descriptor<'a> {
     /// `true` if and only if the value associated with the property may be changed (data descriptors only).
     pub writable: bool,
     /// The value associated with the property (data descriptors only).
-    pub value: Option<Local<'a, Value>>,
+    pub value: Option<Value<'a>>,
     /// A function which serves as a getter for the property.
-    pub getter: Option<Local<'a, Value>>,
+    pub getter: Option<Value<'a>>,
     /// A function which serves as a setter for the property.
-    pub setter: Option<Local<'a, Value>>,
+    pub setter: Option<Value<'a>>,
     /// `true` if and only if the type of this property descriptor may be changed
     /// and if the property may be deleted from the corresponding object.
     pub configurable: bool,
@@ -403,7 +398,7 @@ pub struct Descriptor<'a> {
     pub enumerable: bool,
 }
 
-impl<'a> Local<'a, Value> {
+impl<'a> Value<'a> {
     /// Returns an array of a given object's own property names, in the same order as we get with a normal loop.
     pub fn keys(&self) -> Result<Option<Vec<Atom>>, Error> {
         self.ctxt
@@ -427,12 +422,12 @@ impl<'a> Local<'a, Value> {
     }
 
     /// Get a property value on an object.
-    pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Local<Value>> {
+    pub fn get_property<T: GetProperty>(&self, prop: T) -> Option<Value> {
         self.ctxt.get_property(self, prop)
     }
 
     /// Set a property value on an object.
-    pub fn set_property<T: SetProperty, V: NewValue>(
+    pub fn set_property<T: SetProperty, V: LazyValue>(
         &self,
         prop: T,
         val: V,
@@ -467,7 +462,7 @@ impl<'a> Local<'a, Value> {
 
     /// Defines a new property with value directly on an object,
     /// or modifies an existing property on an object.
-    pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
+    pub fn define_property_value<T: DefinePropertyValue, V: LazyValue>(
         &self,
         prop: T,
         val: V,
@@ -516,7 +511,7 @@ impl ContextRef {
                 self.as_ptr(),
                 &mut ptab,
                 &mut count,
-                value.raw(),
+                value.inner(),
                 flags.bits() as i32,
             )
         })
@@ -542,8 +537,9 @@ impl ContextRef {
     ) -> Result<Option<Descriptor>, Error> {
         let atom = prop.new_atom(self);
         let mut desc = MaybeUninit::<ffi::JSPropertyDescriptor>::uninit();
-        let res =
-            unsafe { ffi::JS_GetOwnProperty(self.as_ptr(), desc.as_mut_ptr(), value.raw(), atom) };
+        let res = unsafe {
+            ffi::JS_GetOwnProperty(self.as_ptr(), desc.as_mut_ptr(), value.inner(), atom)
+        };
         self.free_atom(atom);
 
         self.check_bool(res).map(|exists| {
@@ -553,9 +549,9 @@ impl ContextRef {
 
                 Some(Descriptor {
                     writable: flags.contains(Prop::WRITABLE),
-                    value: Value::new(desc.value).map(|v| self.bind(v)),
-                    getter: Value::new(desc.getter).map(|v| self.bind(v)),
-                    setter: Value::new(desc.setter).map(|v| self.bind(v)),
+                    value: self.new_value(desc.value),
+                    getter: self.new_value(desc.getter),
+                    setter: self.new_value(desc.setter),
                     configurable: flags.contains(Prop::CONFIGURABLE),
                     enumerable: flags.contains(Prop::ENUMERABLE),
                 })
@@ -566,12 +562,12 @@ impl ContextRef {
     }
 
     /// Get a property value on an object.
-    pub fn get_property<T: GetProperty>(&self, this: &Value, prop: T) -> Option<Local<Value>> {
+    pub fn get_property<T: GetProperty>(&self, this: &Value, prop: T) -> Option<Value> {
         prop.get_property(self, this)
     }
 
     /// Set a property value on an object.
-    pub fn set_property<T: SetProperty, V: NewValue>(
+    pub fn set_property<T: SetProperty, V: LazyValue>(
         &self,
         this: &Value,
         prop: T,
@@ -607,7 +603,7 @@ impl ContextRef {
 
     /// Defines a new property with value directly on an object,
     /// or modifies an existing property on an object.
-    pub fn define_property_value<T: DefinePropertyValue, V: NewValue>(
+    pub fn define_property_value<T: DefinePropertyValue, V: LazyValue>(
         &self,
         this: &Value,
         prop: T,
@@ -632,12 +628,12 @@ impl ContextRef {
 
     /// Check if an object is extensible (whether it can have new properties added to it).
     pub fn is_extensible(&self, obj: &Value) -> Result<bool, Error> {
-        self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.raw()) })
+        self.check_bool(unsafe { ffi::JS_IsExtensible(self.as_ptr(), obj.inner()) })
     }
 
     /// Prevents new properties from ever being added to an object (i.e. prevents future extensions to the object).
     pub fn prevent_extensions(&self, obj: &Value) -> Result<bool, Error> {
-        self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.raw()) })
+        self.check_bool(unsafe { ffi::JS_PreventExtensions(self.as_ptr(), obj.inner()) })
     }
 }
 

@@ -4,7 +4,7 @@ use std::ptr::{null_mut, NonNull};
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::ToBool, Atom, ContextRef, Local, RuntimeRef, Value};
+use crate::{ffi, value::ToBool, Atom, Bindable, ContextRef, RuntimeRef, Value};
 
 /// The C module definition.
 pub type ModuleDef = ffi::JSModuleDef;
@@ -53,13 +53,8 @@ impl ContextRef {
         name: T,
         init: ModuleInitFunc,
     ) -> Result<NonNull<ffi::JSModuleDef>, Error> {
-        self.check_null(unsafe {
-            ffi::JS_NewCModule(
-                self.as_ptr(),
-                CString::new(name).expect("name").as_ptr(),
-                init,
-            )
-        })
+        let name = CString::new(name)?;
+        self.check_null(unsafe { ffi::JS_NewCModule(self.as_ptr(), name.as_ptr(), init) })
     }
 
     /// return the name of a module
@@ -70,8 +65,9 @@ impl ContextRef {
     }
 
     /// return the `import.meta` object of a module
-    pub fn import_meta(&self, module: &ModuleDef) -> Result<Local<Value>, Error> {
-        self.bind(unsafe { ffi::JS_GetImportMeta(self.as_ptr(), module as *const _ as *mut _) })
+    pub fn import_meta(&self, module: &ModuleDef) -> Result<Value, Error> {
+        unsafe { ffi::JS_GetImportMeta(self.as_ptr(), module as *const _ as *mut _) }
+            .bind(self)
             .ok()
     }
 
@@ -85,7 +81,7 @@ impl ContextRef {
         self.check_error(unsafe {
             ffi::js_module_set_import_meta(
                 self.as_ptr(),
-                module.raw(),
+                module.inner(),
                 use_realpath.to_bool(),
                 is_main.to_bool(),
             )
@@ -97,7 +93,7 @@ impl ContextRef {
     ///
     /// Useful when `read_object()` returns a module.
     pub fn resolve_module(&self, module: &Value) -> Result<(), Error> {
-        self.check_error(unsafe { ffi::JS_ResolveModule(self.as_ptr(), module.raw()) })
+        self.check_error(unsafe { ffi::JS_ResolveModule(self.as_ptr(), module.inner()) })
             .map(|_| ())
     }
 }

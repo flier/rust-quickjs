@@ -1,83 +1,75 @@
-use std::ops::{Deref, DerefMut};
+use core::cell::Cell;
+use core::mem;
+use core::ops::Deref;
 
 use crate::ContextRef;
 
-pub trait Bindable<'a> {
-    type Output: Unbindable;
+pub trait Bindable: Default {
+    fn bind(self, ctxt: &ContextRef) -> Local<Self>;
 
-    fn bind_to(self, ctxt: &ContextRef) -> Self::Output;
-}
-
-pub trait Unbindable {
-    fn unbind(ctxt: &ContextRef, inner: Self);
+    fn unbind(self, ctxt: &ContextRef);
 }
 
 pub struct Local<'a, T>
 where
-    T: Unbindable,
+    T: Bindable,
 {
     pub(crate) ctxt: &'a ContextRef,
-    pub(crate) inner: Option<T>,
+    inner: Cell<T>,
 }
 
 impl<'a, T> Drop for Local<'a, T>
 where
-    T: Unbindable,
+    T: Bindable,
 {
     fn drop(&mut self) {
-        if let Some(inner) = self.inner.take() {
-            T::unbind(self.ctxt, inner)
-        }
+        self.inner.take().unbind(self.ctxt)
     }
 }
 
 impl<'a, T> Deref for Local<'a, T>
 where
-    T: Unbindable,
+    T: Bindable,
 {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.as_ref().unwrap()
-    }
-}
-
-impl<'a, T> DerefMut for Local<'a, T>
-where
-    T: Unbindable,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.as_mut().unwrap()
+        unsafe { &*self.inner.as_ptr() }
     }
 }
 
 impl<'a, T> Local<'a, T>
 where
-    T: Unbindable,
+    T: Bindable,
 {
-    pub fn into_inner(mut self) -> T {
-        self.inner.take().unwrap()
-    }
-
-    pub fn map<U, F>(mut self, f: F) -> Local<'a, U>
-    where
-        F: FnOnce(T) -> U,
-        U: Unbindable,
-    {
-        let inner = self.inner.take().map(f);
-
+    pub fn new(ctxt: &'a ContextRef, inner: T) -> Self {
         Local {
-            ctxt: self.ctxt,
-            inner: inner,
+            ctxt,
+            inner: Cell::new(inner),
         }
     }
-}
 
-impl ContextRef {
-    pub fn bind<'a, T: Bindable<'a>>(&'a self, val: T) -> Local<'a, T::Output> {
+    pub fn inner(&self) -> T
+    where
+        T: Copy,
+    {
+        self.inner.get()
+    }
+
+    pub fn into_inner(self) -> T {
+        let inner = self.inner.take();
+        mem::drop(self);
+        inner
+    }
+
+    pub fn map<U, F>(self, f: F) -> Local<'a, U>
+    where
+        F: FnOnce(T) -> U,
+        U: Bindable,
+    {
         Local {
-            ctxt: self,
-            inner: Some(val.bind_to(self)),
+            ctxt: self.ctxt,
+            inner: Cell::new(f(self.inner.take())),
         }
     }
 }

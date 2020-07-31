@@ -8,7 +8,7 @@ use foreign_types::ForeignTypeRef;
 use crate::{
     ffi,
     value::{ToBool, ERR},
-    ContextRef, Local, NewValue, Prop, Value,
+    Bindable, ContextRef, LazyValue, Prop, Value,
 };
 
 /// Javascript error.
@@ -88,12 +88,10 @@ impl ErrorKind {
     }
 }
 
-impl TryFrom<Local<'_, Value>> for ErrorKind {
+impl TryFrom<Value<'_>> for ErrorKind {
     type Error = Error;
 
-    fn try_from(
-        value: Local<'_, Value>,
-    ) -> Result<Self, <Self as TryFrom<Local<'_, Value>>>::Error> {
+    fn try_from(value: Value<'_>) -> Result<Self, <Self as TryFrom<Value<'_>>>::Error> {
         use ErrorKind::*;
 
         Ok(if value.is_error() {
@@ -124,7 +122,7 @@ impl TryFrom<Local<'_, Value>> for ErrorKind {
     }
 }
 
-impl NewValue for Result<Local<'_, Value>, Error> {
+impl LazyValue for Result<Value<'_>, Error> {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         match self {
             Ok(v) => v,
@@ -134,11 +132,10 @@ impl NewValue for Result<Local<'_, Value>, Error> {
             },
         }
         .into_inner()
-        .raw()
     }
 }
 
-impl NewValue for ErrorKind {
+impl LazyValue for ErrorKind {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         use ErrorKind::*;
 
@@ -155,12 +152,11 @@ impl NewValue for ErrorKind {
             URIError(msg, stack) => ctxt.throw_custom_error("URIError", msg, stack),
         }
         .into_inner()
-        .raw()
     }
 }
 
-impl<'a> Local<'a, Value> {
-    pub fn ok(self) -> Result<Local<'a, Value>, Error> {
+impl<'a> Value<'a> {
+    pub fn ok(self) -> Result<Value<'a>, Error> {
         if self.is_exception() {
             let err = self.ctxt.take_exception()?;
 
@@ -168,7 +164,7 @@ impl<'a> Local<'a, Value> {
 
             Err(err.into())
         } else {
-            trace!("-> Ok({:?})", self.inner);
+            trace!("-> Ok({})", self);
 
             Ok(self)
         }
@@ -177,31 +173,28 @@ impl<'a> Local<'a, Value> {
 
 impl ContextRef {
     pub fn is_error(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsError(self.as_ptr(), val.raw()).to_bool() }
+        unsafe { ffi::JS_IsError(self.as_ptr(), val.inner()).to_bool() }
     }
 
-    pub fn throw<T: NewValue>(&self, exc: T) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_Throw(self.as_ptr(), exc.new_value(self)) })
+    pub fn throw<T: LazyValue>(&self, exc: T) -> Value {
+        unsafe { ffi::JS_Throw(self.as_ptr(), exc.new_value(self)) }.bind(self)
     }
 
-    pub fn get_exception(&self) -> Option<Local<Value>> {
-        self.bind(unsafe { ffi::JS_GetException(self.as_ptr()) })
+    pub fn get_exception(&self) -> Option<Value> {
+        unsafe { ffi::JS_GetException(self.as_ptr()) }
+            .bind(self)
             .check_undefined()
-    }
-
-    pub fn enable_is_error_property(&self, enable: bool) {
-        unsafe { ffi::JS_EnableIsErrorProperty(self.as_ptr(), enable.to_bool()) }
     }
 
     pub fn reset_uncatchable_error(&self) {
         unsafe { ffi::JS_ResetUncatchableError(self.as_ptr()) }
     }
 
-    pub fn new_error(&self) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_NewError(self.as_ptr()) })
+    pub fn new_error(&self) -> Value {
+        unsafe { ffi::JS_NewError(self.as_ptr()) }.bind(self)
     }
 
-    pub fn throw_error<T: ToString>(&self, msg: T, stack: Option<String>) -> Local<Value> {
+    pub fn throw_error<T: ToString>(&self, msg: T, stack: Option<String>) -> Value {
         let err = self.new_error();
 
         err.define_property_value(
@@ -219,8 +212,8 @@ impl ContextRef {
         self.throw(err)
     }
 
-    pub fn throw_out_of_memory(&self) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) })
+    pub fn throw_out_of_memory(&self) -> Value {
+        unsafe { ffi::JS_ThrowOutOfMemory(self.as_ptr()) }.bind(self)
     }
 
     pub fn throw_custom_error<T: ToString>(
@@ -228,7 +221,7 @@ impl ContextRef {
         name: &str,
         msg: T,
         stack: Option<String>,
-    ) -> Local<Value> {
+    ) -> Value {
         if let Some(ctor) = self.global_object().get_property(name) {
             match ctor.call_constructor(msg.to_string()) {
                 Ok(err) => {
@@ -250,54 +243,34 @@ impl ContextRef {
         }
     }
 
-    pub fn throw_syntax_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_ThrowSyntaxError(
-                self.as_ptr(),
-                cstr!("%s").as_ptr(),
-                CString::new(msg).expect("msg").as_ptr(),
-            )
-        })
+    pub fn throw_syntax_error<T: Into<Vec<u8>>>(&self, msg: T) -> Value {
+        let msg = CString::new(msg).expect("msg");
+        unsafe { ffi::JS_ThrowSyntaxError(self.as_ptr(), cstr!("%s").as_ptr(), msg.as_ptr()) }
+            .bind(self)
     }
 
-    pub fn throw_type_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_ThrowTypeError(
-                self.as_ptr(),
-                cstr!("%s").as_ptr(),
-                CString::new(msg).expect("msg").as_ptr(),
-            )
-        })
+    pub fn throw_type_error<T: Into<Vec<u8>>>(&self, msg: T) -> Value {
+        let msg = CString::new(msg).expect("msg");
+        unsafe { ffi::JS_ThrowTypeError(self.as_ptr(), cstr!("%s").as_ptr(), msg.as_ptr()) }
+            .bind(self)
     }
 
-    pub fn throw_reference_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_ThrowReferenceError(
-                self.as_ptr(),
-                cstr!("%s").as_ptr(),
-                CString::new(msg).expect("msg").as_ptr(),
-            )
-        })
+    pub fn throw_reference_error<T: Into<Vec<u8>>>(&self, msg: T) -> Value {
+        let msg = CString::new(msg).expect("msg");
+        unsafe { ffi::JS_ThrowReferenceError(self.as_ptr(), cstr!("%s").as_ptr(), msg.as_ptr()) }
+            .bind(self)
     }
 
-    pub fn throw_range_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_ThrowRangeError(
-                self.as_ptr(),
-                cstr!("%s").as_ptr(),
-                CString::new(msg).expect("msg").as_ptr(),
-            )
-        })
+    pub fn throw_range_error<T: Into<Vec<u8>>>(&self, msg: T) -> Value {
+        let msg = CString::new(msg).expect("msg");
+        unsafe { ffi::JS_ThrowRangeError(self.as_ptr(), cstr!("%s").as_ptr(), msg.as_ptr()) }
+            .bind(self)
     }
 
-    pub fn throw_internal_error<T: Into<Vec<u8>>>(&self, msg: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_ThrowInternalError(
-                self.as_ptr(),
-                cstr!("%s").as_ptr(),
-                CString::new(msg).expect("msg").as_ptr(),
-            )
-        })
+    pub fn throw_internal_error<T: Into<Vec<u8>>>(&self, msg: T) -> Value {
+        let msg = CString::new(msg).expect("msg");
+        unsafe { ffi::JS_ThrowInternalError(self.as_ptr(), cstr!("%s").as_ptr(), msg.as_ptr()) }
+            .bind(self)
     }
 
     pub fn check_error(&self, ret: i32) -> Result<i32, Error> {

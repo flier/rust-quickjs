@@ -8,22 +8,30 @@ use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-const QUICKJS_SRC: &str = "quickjs-2019-09-18.tar.xz";
+const QUICKJS_SRC: &str = "quickjs-2020-07-05.tar.xz";
 
 lazy_static! {
     static ref OUT_DIR: PathBuf = env::var_os("OUT_DIR").expect("OUT_DIR").into();
     static ref CARGO_MANIFEST_DIR: PathBuf = env::var_os("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR")
         .into();
-    static ref QUICKJS_DIR: PathBuf = OUT_DIR.join(QUICKJS_SRC.split('.').next().unwrap());
+    static ref QUICKJS_DIR: PathBuf = OUT_DIR.join("quickjs");
 }
 
-fn unpack_source_files(quickjs_src: &Path, out_dir: &Path) -> Result<(), Error> {
-    println!("extract `quickjs` from {:?} to {:?}", quickjs_src, out_dir);
+fn unpack_source_files(quickjs_src: &Path) -> Result<(), Error> {
+    println!(
+        "extract `quickjs` from {} to {}",
+        quickjs_src.display(),
+        OUT_DIR.join("quickjs").display()
+    );
 
     let f = fs::File::open(quickjs_src)?;
     let r = lzma::LzmaReader::new_decompressor(f)?;
-    tar::Archive::new(r).unpack(&out_dir)?;
+    tar::Archive::new(r).unpack(OUT_DIR.as_path())?;
+    fs::rename(
+        OUT_DIR.join(QUICKJS_SRC.split('.').next().unwrap()),
+        OUT_DIR.join("quickjs"),
+    )?;
 
     Ok(())
 }
@@ -120,75 +128,59 @@ fn patch_quickjs_libc(quickjs_libc: &Path) -> Result<(), Error> {
 }
 
 fn build_libquickjs() -> Result<(), Error> {
-    if !QUICKJS_DIR.join("quickjs.h").is_file() {
-        unpack_source_files(
-            &CARGO_MANIFEST_DIR.join(QUICKJS_SRC).canonicalize()?,
-            OUT_DIR.as_path(),
-        )?;
+    if !QUICKJS_DIR.join("quickjs.h").exists() {
+        unpack_source_files(&CARGO_MANIFEST_DIR.join(QUICKJS_SRC).canonicalize()?)?;
     }
 
-    if !OUT_DIR.join("VERSION").is_file() {
-        fs::copy(QUICKJS_DIR.join("VERSION"), OUT_DIR.join("VERSION"))?;
-    }
+    // patch_makefile(quickjs_dir.join("Makefile"))?;
+    // patch_quickjs(quickjs_dir.join("quickjs.c"))?;
+    // patch_quickjs_libc(quickjs_dir.join("quickjs-libc.c"))?;
 
-    patch_makefile(&QUICKJS_DIR.join("Makefile"))?;
-    patch_quickjs(&QUICKJS_DIR.join("quickjs.c"))?;
-    patch_quickjs_libc(&QUICKJS_DIR.join("quickjs-libc.c"))?;
-
-    let repl_c = if cfg!(feature = "bignum") {
-        "repl-bn.c"
+    let libquickjs = if cfg!(feature = "lto") {
+        "libquickjs.lto.a"
     } else {
-        "repl.c"
+        "libquickjs.a"
     };
-    let qjscalc_c = "qjscalc.c";
-
-    let quickjs = format!(
-        "quickjs{}{}",
-        if cfg!(feature = "bignum") { ".bn" } else { "" },
-        if cfg!(feature = "lto") { ".lto" } else { "" }
-    );
-    let libquickjs = format!("lib{}.a", quickjs);
     let mut targets = vec![libquickjs];
 
     if cfg!(feature = "repl") {
-        targets.push(repl_c.to_owned());
+        targets.push("repl.c");
     }
 
     if cfg!(feature = "qjscalc") {
-        targets.push(qjscalc_c.to_owned());
+        targets.push("qjscalc.c");
     }
 
-    for target in &targets {
-        if !QUICKJS_DIR.join(target).is_file() {
-            println!("make {:?} ...", target);
-
-            let output = Command::new("make")
-                .arg(target)
-                .current_dir(QUICKJS_DIR.as_path())
-                .output()?;
-
-            println!("status: {}", output.status);
-            println!("stdout: {}", CString::new(output.stdout)?.to_string_lossy());
-            eprintln!("stderr: {}", CString::new(output.stderr)?.to_string_lossy());
+    for target in targets {
+        if QUICKJS_DIR.join(target).exists() {
+            continue;
         }
+
+        println!("make {}", target);
+
+        let output = Command::new("make")
+            .arg(target)
+            .current_dir(QUICKJS_DIR.as_path())
+            .output()?;
+
+        println!("status: {}", output.status);
+        println!("stdout: {}", CString::new(output.stdout)?.to_string_lossy());
+        eprintln!("stderr: {}", CString::new(output.stderr)?.to_string_lossy());
     }
 
-    println!(
-        "cargo:rustc-link-search=native={}",
-        QUICKJS_DIR.to_string_lossy()
-    );
-    println!("cargo:rustc-link-lib=static={}", quickjs);
+    println!("cargo:rustc-link-search=native={}", QUICKJS_DIR.display());
+    println!("cargo:rustc-link-lib=static=quickjs");
     println!("cargo:rerun-if-changed={}", QUICKJS_SRC);
 
     if cfg!(feature = "repl") {
         cc::Build::new()
-            .file(QUICKJS_DIR.join(repl_c))
+            .file(QUICKJS_DIR.join("repl.c"))
             .compile("repl");
     }
 
     if cfg!(feature = "qjscalc") {
         cc::Build::new()
-            .file(QUICKJS_DIR.join(qjscalc_c))
+            .file(QUICKJS_DIR.join("qjscalc.c"))
             .compile("qjscalc");
     }
 
@@ -211,6 +203,7 @@ fn gen_binding_files() -> Result<(), Error> {
         .whitelist_function("(__)?(JS|JS|js)_.*")
         .opaque_type("FILE")
         .blacklist_type("__.*")
+        .size_t_is_usize(true)
         .default_enum_style(bindgen::EnumVariation::ModuleConsts)
         .generate()
         .map_err(|_| err_msg("generate binding file"))?

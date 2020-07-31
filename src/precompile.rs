@@ -3,7 +3,7 @@ use std::slice;
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, ContextRef, Local, Value};
+use crate::{ffi, Bindable, ContextRef, Value};
 
 bitflags! {
     pub struct WriteObj: u32 {
@@ -23,7 +23,7 @@ bitflags! {
     }
 }
 
-impl Local<'_, Value> {
+impl Value<'_> {
     pub fn write_bytecode(&self) -> Result<Vec<u8>, Error> {
         self.ctxt.write_object(self, WriteObj::BYTECODE)
     }
@@ -35,7 +35,7 @@ impl ContextRef {
         let mut len = 0;
 
         self.check_null(unsafe {
-            ffi::JS_WriteObject(self.as_ptr(), &mut len, obj.raw(), flags.bits as i32)
+            ffi::JS_WriteObject(self.as_ptr(), &mut len, obj.inner(), flags.bits as i32)
         })
         .map(|buf| unsafe {
             let data = slice::from_raw_parts(buf.cast().as_ptr(), len).to_vec();
@@ -47,21 +47,23 @@ impl ContextRef {
     }
 
     /// Read the script or module from bytecode
-    pub fn read_object(&self, buf: &[u8], flags: ReadObj) -> Result<Local<Value>, Error> {
-        self.bind(unsafe {
+    pub fn read_object(&self, buf: &[u8], flags: ReadObj) -> Result<Value, Error> {
+        unsafe {
             ffi::JS_ReadObject(
                 self.as_ptr(),
                 buf.as_ptr(),
                 buf.len(),
                 (flags | ReadObj::ROM_DATA).bits as i32,
             )
-        })
+        }
+        .bind(self)
         .ok()
     }
 
     /// Evaluate a script or module source in bytecode.
-    pub fn eval_function<T: Into<ffi::JSValue>>(&self, func: T) -> Result<Local<Value>, Error> {
-        self.bind(unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into()) })
+    pub fn eval_function(&self, func: Value) -> Result<Value, Error> {
+        unsafe { ffi::JS_EvalFunction(self.as_ptr(), func.into_inner()) }
+            .bind(self)
             .ok()
     }
 }

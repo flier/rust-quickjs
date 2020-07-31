@@ -6,7 +6,7 @@ use std::path::Path;
 use failure::{Error, ResultExt};
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, Context, ContextRef, ExtractValue, Local, ReadObj, Runtime, Value};
+use crate::{ffi, Bindable, Context, ContextRef, ExtractValue, ReadObj, Runtime, Value};
 
 bitflags! {
     /// Flags for `eval` method.
@@ -40,7 +40,7 @@ pub trait Source: Sized {
     fn default_flags() -> Self::Flags;
 
     /// Evaluate a script or module source.
-    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error>;
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Value<'_>, Error>;
 }
 
 impl Source for &str {
@@ -50,7 +50,7 @@ impl Source for &str {
         Eval::GLOBAL
     }
 
-    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Value<'_>, Error> {
         ctxt.eval_script(self, "<evalScript>", flags)
     }
 }
@@ -62,7 +62,7 @@ impl Source for &Path {
         Eval::GLOBAL
     }
 
-    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+    fn eval(self, ctxt: &'_ ContextRef, flags: Self::Flags) -> Result<Value<'_>, Error> {
         ctxt.eval_file(self, flags)
     }
 }
@@ -70,11 +70,9 @@ impl Source for &Path {
 impl Source for &[u8] {
     type Flags = ();
 
-    fn default_flags() -> Self::Flags {
-        ()
-    }
+    fn default_flags() -> Self::Flags {}
 
-    fn eval(self, ctxt: &'_ ContextRef, _flags: Self::Flags) -> Result<Local<'_, Value>, Error> {
+    fn eval(self, ctxt: &'_ ContextRef, _flags: Self::Flags) -> Result<Value<'_>, Error> {
         ctxt.eval_binary(self, false)
     }
 }
@@ -170,7 +168,7 @@ impl ContextRef {
         input: T,
         filename: &str,
         flags: Eval,
-    ) -> Result<Local<Value>, Error> {
+    ) -> Result<Value, Error> {
         let input = CString::new(input).context("input")?;
 
         trace!(
@@ -183,7 +181,7 @@ impl ContextRef {
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename).context("filename")?;
 
-        self.bind(unsafe {
+        unsafe {
             ffi::JS_Eval(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
@@ -191,19 +189,20 @@ impl ContextRef {
                 filename.as_ptr() as *const _,
                 flags.bits as i32,
             )
-        })
+        }
+        .bind(self)
         .ok()
     }
 
     /// Evaluate a script or module source in file.
-    pub fn eval_file<P: AsRef<Path>>(&self, path: P, flags: Eval) -> Result<Local<Value>, Error> {
+    pub fn eval_file<P: AsRef<Path>>(&self, path: P, flags: Eval) -> Result<Value, Error> {
         let filename = path.as_ref().to_string_lossy().to_string();
 
         load_file(path).and_then(|s| self.eval_script(s, &filename, flags))
     }
 
     /// Evaluate a script or module source in bytecode.
-    pub fn eval_binary(&self, buf: &[u8], load_only: bool) -> Result<(Local<Value>), Error> {
+    pub fn eval_binary(&self, buf: &[u8], load_only: bool) -> Result<Value, Error> {
         trace!(
             "eval {} bytes function{}",
             buf.len(),
@@ -229,23 +228,20 @@ impl ContextRef {
     }
 
     /// Parse JSON expression.
-    pub fn parse_json<T: Into<Vec<u8>>>(
-        &self,
-        input: T,
-        filename: &str,
-    ) -> Result<Local<Value>, Error> {
+    pub fn parse_json<T: Into<Vec<u8>>>(&self, input: T, filename: &str) -> Result<Value, Error> {
         let input = CString::new(input)?;
         let input = input.to_bytes_with_nul();
         let filename = CString::new(filename)?;
 
-        self.bind(unsafe {
+        unsafe {
             ffi::JS_ParseJSON(
                 self.as_ptr(),
                 input.as_ptr() as *const _,
                 input.len(),
                 filename.as_ptr(),
             )
-        })
+        }
+        .bind(self)
         .ok()
     }
 }

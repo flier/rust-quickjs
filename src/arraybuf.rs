@@ -4,27 +4,27 @@ use std::slice::{self, SliceIndex};
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::NewValue, ContextRef, Local, Value};
+use crate::{ffi, value::LazyValue, Bindable, ContextRef, Value};
 
 /// `ArrayBuffer` represent a generic, fixed-length raw binary data buffer.
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct ArrayBuffer<'a>(Local<'a, Value>);
+pub struct ArrayBuffer<'a>(Value<'a>);
 
 /// `SharedArrayBuffer` represent a generic, fixed-length raw binary data buffer,
 /// similar to the ArrayBuffer object, but in a way that they can be used to create views on shared memory.
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SharedArrayBuffer<'a>(Local<'a, Value>);
+pub struct SharedArrayBuffer<'a>(Value<'a>);
 
-impl<'a> NewValue for ArrayBuffer<'a> {
+impl<'a> LazyValue for ArrayBuffer<'a> {
     fn new_value(self, ctxt: &ContextRef) -> ffi::JSValue {
         self.0.new_value(ctxt)
     }
 }
 
 impl<'a> Deref for ArrayBuffer<'a> {
-    type Target = Local<'a, Value>;
+    type Target = Value<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -35,7 +35,7 @@ impl<'a> AsRef<[u8]> for ArrayBuffer<'a> {
     fn as_ref(&self) -> &[u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.raw());
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
 
             slice::from_raw_parts(data, size)
         }
@@ -46,7 +46,7 @@ impl<'a> AsMut<[u8]> for ArrayBuffer<'a> {
     fn as_mut(&mut self) -> &mut [u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.raw());
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
 
             slice::from_raw_parts_mut(data, size)
         }
@@ -72,18 +72,18 @@ impl<'a> ArrayBuffer<'a> {
 
     /// Detach the buffer and the underlying memory is released.
     pub fn detach(&self) {
-        unsafe { ffi::JS_DetachArrayBuffer(self.ctxt.as_ptr(), self.raw()) }
+        unsafe { ffi::JS_DetachArrayBuffer(self.ctxt.as_ptr(), self.inner()) }
     }
 }
 
-impl<'a> NewValue for SharedArrayBuffer<'a> {
+impl<'a> LazyValue for SharedArrayBuffer<'a> {
     fn new_value(self, _ctxt: &ContextRef) -> ffi::JSValue {
-        self.raw()
+        self.inner()
     }
 }
 
 impl<'a> Deref for SharedArrayBuffer<'a> {
-    type Target = Local<'a, Value>;
+    type Target = Value<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -94,7 +94,7 @@ impl<'a> AsRef<[u8]> for SharedArrayBuffer<'a> {
     fn as_ref(&self) -> &[u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.raw());
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
             slice::from_raw_parts(data, size)
         }
     }
@@ -104,7 +104,7 @@ impl<'a> AsMut<[u8]> for SharedArrayBuffer<'a> {
     fn as_mut(&mut self) -> &mut [u8] {
         unsafe {
             let mut size = 0;
-            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.raw());
+            let data = ffi::JS_GetArrayBuffer(self.ctxt.as_ptr(), &mut size, self.inner());
             slice::from_raw_parts_mut(data, size)
         }
     }
@@ -133,16 +133,19 @@ impl ContextRef {
     pub fn new_array_buffer<T: AsMut<[u8]>>(&self, buf: &mut T) -> ArrayBuffer {
         let buf = buf.as_mut();
 
-        ArrayBuffer(self.bind(unsafe {
-            ffi::JS_NewArrayBuffer(
-                self.as_ptr(),
-                buf.as_mut_ptr(),
-                buf.len(),
-                None,
-                ptr::null_mut(),
-                ffi::FALSE_VALUE,
-            )
-        }))
+        ArrayBuffer(
+            unsafe {
+                ffi::JS_NewArrayBuffer(
+                    self.as_ptr(),
+                    buf.as_mut_ptr(),
+                    buf.len(),
+                    None,
+                    ptr::null_mut(),
+                    ffi::FALSE_VALUE,
+                )
+            }
+            .bind(self),
+        )
     }
 
     /// Creates a new `SharedArrayBuffer` of the given bytes.
@@ -151,23 +154,27 @@ impl ContextRef {
         let data = buf.as_mut_ptr();
         let len = buf.len();
 
-        SharedArrayBuffer(self.bind(unsafe {
-            ffi::JS_NewArrayBuffer(
-                self.as_ptr(),
-                data,
-                len,
-                None,
-                Box::into_raw(buf) as *mut _,
-                ffi::TRUE_VALUE,
-            )
-        }))
+        SharedArrayBuffer(
+            unsafe {
+                ffi::JS_NewArrayBuffer(
+                    self.as_ptr(),
+                    data,
+                    len,
+                    None,
+                    Box::into_raw(buf) as *mut _,
+                    ffi::TRUE_VALUE,
+                )
+            }
+            .bind(self),
+        )
     }
 
     /// Creates a new `ArrayBuffer` which copy the given bytes.
     pub fn new_array_buffer_copy(&self, buf: &mut [u8]) -> ArrayBuffer {
-        ArrayBuffer(self.bind(unsafe {
-            ffi::JS_NewArrayBufferCopy(self.as_ptr(), buf.as_mut_ptr(), buf.len())
-        }))
+        ArrayBuffer(
+            unsafe { ffi::JS_NewArrayBufferCopy(self.as_ptr(), buf.as_mut_ptr(), buf.len()) }
+                .bind(self),
+        )
     }
 }
 

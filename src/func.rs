@@ -1,32 +1,26 @@
 use failure::Error;
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::ToBool, ContextRef, Local, NewAtom, NewValue, Value};
+use crate::{ffi, value::ToBool, Bindable, ContextRef, LazyValue, NewAtom, Value};
 
 pub trait Args {
-    type Values: AsRef<[ffi::JSValue]>;
-
-    fn into_values(self, ctxt: &ContextRef) -> Self::Values;
+    fn into_values(self, ctxt: &ContextRef) -> Vec<ffi::JSValue>;
 }
 
 impl<T> Args for T
 where
-    T: NewValue + Sized,
+    T: LazyValue + Sized,
 {
-    type Values = [ffi::JSValue; 1];
-
-    fn into_values(self, ctxt: &ContextRef) -> Self::Values {
-        [self.new_value(ctxt)]
+    fn into_values(self, ctxt: &ContextRef) -> Vec<ffi::JSValue> {
+        vec![self.new_value(ctxt)]
     }
 }
 
 impl<T> Args for &[T]
 where
-    T: NewValue + Clone,
+    T: LazyValue + Clone,
 {
-    type Values = Vec<ffi::JSValue>;
-
-    fn into_values(self, ctxt: &ContextRef) -> Self::Values {
+    fn into_values(self, ctxt: &ContextRef) -> Vec<ffi::JSValue> {
         self.iter().map(|v| v.clone().new_value(ctxt)).collect()
     }
 }
@@ -36,17 +30,10 @@ macro_rules! array_args {
         $(
             impl<T> Args for [T; $N]
             where
-                T: NewValue,
+                T: LazyValue + Clone,
             {
-                type Values = Vec<ffi::JSValue>;
-
-                fn into_values(self, ctxt: &ContextRef) -> Self::Values {
-                    let len = self.len();
-                    let mut data = std::mem::ManuallyDrop::new(self);
-
-                    (0..len).map(|idx| unsafe {
-                        std::ptr::read(data.get_unchecked_mut(idx)).new_value(ctxt)
-                    }).collect()
+                fn into_values(self, ctxt: &ContextRef) -> Vec<ffi::JSValue> {
+                    self.iter().map(|arg| arg.clone().new_value(ctxt)).collect()
                 }
             }
         )*
@@ -63,10 +50,8 @@ array_args! {
 macro_rules! tuple_args {
     () => {
         impl Args for () {
-            type Values = [ffi::JSValue; 0];
-
-            fn into_values(self, _ctxt: &ContextRef) -> Self::Values {
-                []
+            fn into_values(self, _ctxt: &ContextRef) -> Vec<ffi::JSValue> {
+                vec![]
             }
         }
     };
@@ -74,15 +59,13 @@ macro_rules! tuple_args {
     ($($name:ident)+) => {
         impl<$( $name ),*> Args for ($( $name, )*)
         where
-            $( $name: NewValue, )*
+            $( $name: LazyValue, )*
         {
-            type Values = [ffi::JSValue; count!($( $name )*)];
-
             #[allow(non_snake_case)]
-            fn into_values(self, ctxt: &ContextRef) -> Self::Values {
+            fn into_values(self, ctxt: &ContextRef) -> Vec<ffi::JSValue> {
                 let ( $($name,)* ) = self;
 
-                [ $( $name.new_value(ctxt), )* ]
+                vec![ $( $name.new_value(ctxt), )* ]
             }
         }
     }
@@ -115,16 +98,16 @@ tuple_args! { A B C D E F G H I J K L M N O P Q R }
 tuple_args! { A B C D E F G H I J K L M N O P Q R S }
 tuple_args! { A B C D E F G H I J K L M N O P Q R S T }
 
-impl<'a> Local<'a, Value> {
-    pub fn call<T: Args>(&self, this: Option<&Value>, args: T) -> Result<Local<Value>, Error> {
+impl<'a> Value<'a> {
+    pub fn call<T: Args>(&self, this: Option<&Value>, args: T) -> Result<Value, Error> {
         self.ctxt.call(self, this, args)
     }
 
-    pub fn invoke<N: NewAtom, T: Args>(&self, atom: N, args: T) -> Result<Local<Value>, Error> {
+    pub fn invoke<N: NewAtom, T: Args>(&self, atom: N, args: T) -> Result<Value, Error> {
         self.ctxt.invoke(self, atom, args)
     }
 
-    pub fn call_constructor<T: Args>(&self, args: T) -> Result<Local<Value>, Error> {
+    pub fn call_constructor<T: Args>(&self, args: T) -> Result<Value, Error> {
         self.ctxt.call_constructor(self, args)
     }
 
@@ -132,18 +115,18 @@ impl<'a> Local<'a, Value> {
         &self,
         new_target: Option<&Value>,
         args: T,
-    ) -> Result<Local<Value>, Error> {
+    ) -> Result<Value, Error> {
         self.ctxt.call_constructor2(self, new_target, args)
     }
 }
 
 impl ContextRef {
     pub fn is_function(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.raw()).to_bool() }
+        unsafe { ffi::JS_IsFunction(self.as_ptr(), val.inner()).to_bool() }
     }
 
     pub fn is_constructor(&self, val: &Value) -> bool {
-        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.raw()).to_bool() }
+        unsafe { ffi::JS_IsConstructor(self.as_ptr(), val.inner()).to_bool() }
     }
 
     pub fn call<T: Args>(
@@ -151,26 +134,25 @@ impl ContextRef {
         func: &Value,
         this: Option<&Value>,
         args: T,
-    ) -> Result<Local<Value>, Error> {
-        let args = args.into_values(self);
-        let args = args.as_ref();
+    ) -> Result<Value, Error> {
+        let mut args = args.into_values(self);
         let ret = {
             unsafe {
                 ffi::JS_Call(
                     self.as_ptr(),
-                    func.raw(),
-                    this.map_or(ffi::UNDEFINED, |v| v.raw()),
+                    func.inner(),
+                    this.map_or(ffi::UNDEFINED, |v| v.inner()),
                     args.len() as i32,
-                    args.as_ptr() as *mut _,
+                    args.as_mut_ptr() as *mut _,
                 )
             }
         };
 
         for arg in args {
-            self.free_value(*arg);
+            self.free_value(arg);
         }
 
-        self.bind(ret).ok()
+        ret.bind(self).ok()
     }
 
     pub fn invoke<N: NewAtom, T: Args>(
@@ -178,45 +160,44 @@ impl ContextRef {
         this: &Value,
         atom: N,
         args: T,
-    ) -> Result<Local<Value>, Error> {
+    ) -> Result<Value, Error> {
         let atom = atom.new_atom(self);
-        let args = args.into_values(self);
-        let args = args.as_ref();
+        let mut args = args.into_values(self);
 
-        let res = self.bind(unsafe {
+        let res = unsafe {
             ffi::JS_Invoke(
                 self.as_ptr(),
-                this.raw(),
+                this.inner(),
                 atom,
                 args.len() as i32,
-                args.as_ptr() as *mut _,
+                args.as_mut_ptr() as *mut _,
             )
-        });
+        }
+        .bind(self);
         self.free_atom(atom);
         for arg in args {
-            self.free_value(*arg);
+            self.free_value(arg);
         }
 
         res.ok()
     }
 
-    pub fn call_constructor<T: Args>(&self, func: &Value, args: T) -> Result<Local<Value>, Error> {
-        let args = args.into_values(self);
-        let args = args.as_ref();
+    pub fn call_constructor<T: Args>(&self, func: &Value, args: T) -> Result<Value, Error> {
+        let mut args = args.into_values(self);
         let ret = unsafe {
             ffi::JS_CallConstructor(
                 self.as_ptr(),
-                func.raw(),
+                func.inner(),
                 args.len() as i32,
-                args.as_ptr() as *mut _,
+                args.as_mut_ptr() as *mut _,
             )
         };
 
         for arg in args {
-            self.free_value(*arg);
+            self.free_value(arg);
         }
 
-        self.bind(ret).ok()
+        ret.bind(self).ok()
     }
 
     pub fn call_constructor2<T: Args>(
@@ -224,24 +205,27 @@ impl ContextRef {
         func: &Value,
         new_target: Option<&Value>,
         args: T,
-    ) -> Result<Local<Value>, Error> {
-        let args = args.into_values(self);
-        let args = args.as_ref();
+    ) -> Result<Value, Error> {
+        let mut args = args.into_values(self);
         let ret = unsafe {
             ffi::JS_CallConstructor2(
                 self.as_ptr(),
-                func.raw(),
-                new_target.map_or(ffi::UNDEFINED, |v| v.raw()),
+                func.inner(),
+                new_target.map_or(ffi::UNDEFINED, |v| v.inner()),
                 args.len() as i32,
-                args.as_ptr() as *mut _,
+                args.as_mut_ptr() as *mut _,
             )
         };
 
         for arg in args {
-            self.free_value(*arg);
+            self.free_value(arg);
         }
 
-        self.bind(ret).ok()
+        ret.bind(self).ok()
+    }
+
+    pub fn set_constructor(&self, func: &Value, ctor: Value) {
+        unsafe { ffi::JS_SetConstructor(self.as_ptr(), func.inner(), ctor.into_inner()) }
     }
 }
 

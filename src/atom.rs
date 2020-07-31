@@ -1,10 +1,10 @@
+use core::fmt;
 use std::ffi::{CStr, CString};
-use std::fmt;
 use std::os::raw::c_char;
 
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, handle::Unbindable, ContextRef, Local, RuntimeRef, Value};
+use crate::{ffi, Bindable, ContextRef, Local, RuntimeRef, Value};
 
 /// Create or find an `Atom` base on `&str`, `*const c_char` or `u32`.
 pub trait NewAtom {
@@ -30,9 +30,9 @@ impl NewAtom for u32 {
     }
 }
 
-impl Unbindable for ffi::JSAtom {
-    fn unbind(ctxt: &ContextRef, atom: ffi::JSAtom) {
-        ctxt.free_atom(atom)
+impl NewAtom for ffi::JSValue {
+    fn new_atom(self, context: &ContextRef) -> ffi::JSAtom {
+        unsafe { ffi::JS_ValueToAtom(context.as_ptr(), self) }
     }
 }
 
@@ -72,12 +72,12 @@ impl Atom<'_> {
     }
 
     /// Convert an `Atom` to a Javascript `Value`.
-    pub fn to_value(&self) -> Local<Value> {
+    pub fn to_value(&self) -> Value {
         self.ctxt.atom_to_value(**self)
     }
 
     /// Convert an `Atom` to a Javascript `String`.
-    pub fn to_str(&self) -> Local<Value> {
+    pub fn to_str(&self) -> Value {
         self.ctxt.atom_to_string(**self)
     }
 
@@ -93,6 +93,16 @@ impl RuntimeRef {
     }
 }
 
+impl Bindable for ffi::JSAtom {
+    fn bind(self, ctxt: &ContextRef) -> Local<ffi::JSAtom> {
+        ctxt.bind_atom(self)
+    }
+
+    fn unbind(self, ctxt: &ContextRef) {
+        ctxt.free_atom(self)
+    }
+}
+
 impl ContextRef {
     /// Create or find an `Atom` in the context.
     pub fn new_atom<T: NewAtom>(&self, v: T) -> Local<ffi::JSAtom> {
@@ -100,22 +110,7 @@ impl ContextRef {
     }
 
     pub fn bind_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
-        Local {
-            ctxt: self,
-            inner: Some(atom),
-        }
-    }
-
-    /// Create or find an `Atom` base on string.
-    pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Local<Value> {
-        self.bind(unsafe {
-            ffi::JS_NewAtomString(
-                self.as_ptr(),
-                CString::new(s)
-                    .expect("atom string should not contain an internal 0 byte")
-                    .as_ptr(),
-            )
-        })
+        Local::new(self, atom)
     }
 
     /// Free an `Atom` reference.
@@ -123,19 +118,25 @@ impl ContextRef {
         unsafe { ffi::JS_FreeAtom(self.as_ptr(), atom) }
     }
 
+    /// Create or find an `Atom` base on string.
+    pub fn new_atom_string<T: Into<Vec<u8>>>(&self, s: T) -> Value {
+        let s = CString::new(s).expect("atom string should not contain an internal 0 byte");
+        unsafe { ffi::JS_NewAtomString(self.as_ptr(), s.as_ptr()) }.bind(self)
+    }
+
     /// Clone an `Atom` in the context.
     pub fn clone_atom(&self, atom: ffi::JSAtom) -> Local<ffi::JSAtom> {
-        self.bind_atom(unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) })
+        unsafe { ffi::JS_DupAtom(self.as_ptr(), atom) }.bind(self)
     }
 
     /// Convert an `Atom` to a Javascript `Value`.
-    pub fn atom_to_value(&self, atom: ffi::JSAtom) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_AtomToValue(self.as_ptr(), atom) })
+    pub fn atom_to_value(&self, atom: ffi::JSAtom) -> Value {
+        unsafe { ffi::JS_AtomToValue(self.as_ptr(), atom) }.bind(self)
     }
 
     /// Convert an `Atom` to a Javascript `String`.
-    pub fn atom_to_string(&self, atom: ffi::JSAtom) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) })
+    pub fn atom_to_string(&self, atom: ffi::JSAtom) -> Value {
+        unsafe { ffi::JS_AtomToString(self.as_ptr(), atom) }.bind(self)
     }
 
     /// Convert an `Atom` to a `CString`.
@@ -151,7 +152,7 @@ impl ContextRef {
     }
 
     pub fn value_to_atom(&self, value: &Value) -> Local<ffi::JSAtom> {
-        self.bind_atom(unsafe { ffi::JS_ValueToAtom(self.as_ptr(), value.raw()) })
+        self.bind_atom(unsafe { ffi::JS_ValueToAtom(self.as_ptr(), value.inner()) })
     }
 }
 
@@ -173,6 +174,6 @@ mod tests {
 
         assert_eq!(ToString::to_string(&foo), "foo");
         assert_eq!(ToString::to_string(&bar), "bar");
-        assert_ne!(foo.inner, bar.inner);
+        assert_ne!(foo.inner(), bar.inner());
     }
 }

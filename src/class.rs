@@ -1,6 +1,6 @@
 use foreign_types::ForeignTypeRef;
 
-use crate::{ffi, value::ToBool, ContextRef, Local, Runtime, RuntimeRef, Value};
+use crate::{ffi, value::ToBool, Bindable, ContextRef, Runtime, RuntimeRef, Value};
 
 /// A globally allocated class ID.
 pub type ClassId = ffi::JSClassID;
@@ -36,7 +36,7 @@ impl ContextRef {
     }
 
     /// Get the prototype for a given class in a given JSContext.
-    pub fn get_class_proto(&self, class_id: ClassId) -> Local<Value> {
-        self.bind(unsafe { ffi::JS_GetClassProto(self.as_ptr(), class_id) })
+    pub fn get_class_proto(&self, class_id: ClassId) -> Value {
+        unsafe { ffi::JS_GetClassProto(self.as_ptr(), class_id) }.bind(self)
     }
 }
