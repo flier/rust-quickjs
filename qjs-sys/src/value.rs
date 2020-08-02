@@ -1,27 +1,77 @@
+#![allow(clippy::missing_safety_doc)]
+
 use core::fmt;
 use core::ptr::NonNull;
 
-use crate::{JSContext, JSObject, JSRefCountHeader, JSValue, JSValueUnion};
+use crate::{
+    JSContext, JSObject, JSRefCountHeader, JSRuntime, JSValue, JSValueUnion, __JS_FreeValue,
+    __JS_FreeValueRT,
+};
 
 pub const TRUE_VALUE: i32 = 1;
 pub const FALSE_VALUE: i32 = 0;
 
 pub use crate::_bindgen_ty_1::*;
 
-#[inline(always)]
-const fn mkval(tag: i32, val: i32) -> JSValue {
-    JSValue {
-        tag: tag as i64,
-        u: JSValueUnion { int32: val },
-    }
+#[macro_export]
+macro_rules! JS_VALUE_GET_TAG {
+    ($v:expr) => {
+        (*$v).tag as crate::_bindgen_ty_1::Type
+    };
 }
 
-#[inline(always)]
-const fn mkptr<T>(tag: i32, val: *mut T) -> JSValue {
-    JSValue {
-        tag: tag as i64,
-        u: JSValueUnion { ptr: val as *mut _ },
-    }
+#[macro_export]
+macro_rules! JS_VALUE_GET_INT {
+    ($v:expr) => {
+        (*$v).u.int32
+    };
+}
+
+#[macro_export]
+macro_rules! JS_VALUE_GET_BOOL {
+    ($v:expr) => {
+        (*$v).u.int32 != 0
+    };
+}
+
+#[macro_export]
+macro_rules! JS_VALUE_GET_FLOAT64 {
+    ($v:expr) => {
+        (*$v).u.float64
+    };
+}
+
+#[macro_export]
+macro_rules! JS_VALUE_GET_PTR {
+    ($v:expr) => {
+        (*$v).u.ptr
+    };
+}
+
+#[macro_export]
+macro_rules! JS_MKVAL {
+    ($tag:ident, $val:expr) => {
+        JSValue {
+            tag: $tag as i64,
+            u: JSValueUnion { int32: $val },
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! JS_MKPTR {
+    ($tag:ident, $p:expr) => {
+        JSValue {
+            tag: $tag as i64,
+            u: JSValueUnion { ptr: $p as *mut _ },
+        }
+    };
+}
+
+macro_rules! JS_VALUE_HAS_REF_COUNT {
+    ($v:expr) => {
+        $v.tag as crate::_bindgen_ty_1::Type >= $crate::_bindgen_ty_1::JS_TAG_FIRST
+    };
 }
 
 pub const NAN: JSValue = JSValue {
@@ -31,32 +81,32 @@ pub const NAN: JSValue = JSValue {
     tag: JS_TAG_FLOAT64 as i64,
 };
 
-pub const NULL: JSValue = mkval(JS_TAG_NULL, 0);
-pub const UNDEFINED: JSValue = mkval(JS_TAG_UNDEFINED, 0);
-pub const FALSE: JSValue = mkval(JS_TAG_BOOL, FALSE_VALUE);
-pub const TRUE: JSValue = mkval(JS_TAG_BOOL, TRUE_VALUE);
-pub const EXCEPTION: JSValue = mkval(JS_TAG_EXCEPTION, 0);
-pub const UNINITIALIZED: JSValue = mkval(JS_TAG_UNINITIALIZED, 0);
+pub const NULL: JSValue = JS_MKVAL!(JS_TAG_NULL, 0);
+pub const UNDEFINED: JSValue = JS_MKVAL!(JS_TAG_UNDEFINED, 0);
+pub const FALSE: JSValue = JS_MKVAL!(JS_TAG_BOOL, FALSE_VALUE);
+pub const TRUE: JSValue = JS_MKVAL!(JS_TAG_BOOL, TRUE_VALUE);
+pub const EXCEPTION: JSValue = JS_MKVAL!(JS_TAG_EXCEPTION, 0);
+pub const UNINITIALIZED: JSValue = JS_MKVAL!(JS_TAG_UNINITIALIZED, 0);
 
 #[inline(always)]
 pub fn JS_NewBool(_ctx: *mut JSContext, val: bool) -> JSValue {
-    mkval(JS_TAG_BOOL, if val { TRUE_VALUE } else { FALSE_VALUE })
+    JS_MKVAL!(JS_TAG_BOOL, if val { TRUE_VALUE } else { FALSE_VALUE })
 }
 
 #[inline(always)]
 pub fn JS_NewInt32(_ctx: *mut JSContext, val: i32) -> JSValue {
-    mkval(JS_TAG_INT, val)
+    JS_MKVAL!(JS_TAG_INT, val)
 }
 
 #[inline(always)]
 pub fn JS_NewCatchOffset(_ctx: *mut JSContext, val: i32) -> JSValue {
-    mkval(JS_TAG_CATCH_OFFSET, val)
+    JS_MKVAL!(JS_TAG_CATCH_OFFSET, val)
 }
 
 #[inline(always)]
 pub fn JS_NewInt64(ctx: *mut JSContext, val: i64) -> JSValue {
     if val as i32 as i64 == val {
-        mkval(JS_TAG_INT, val as i32)
+        JS_MKVAL!(JS_TAG_INT, val as i32)
     } else {
         __JS_NewFloat64(ctx, val as f64)
     }
@@ -65,7 +115,7 @@ pub fn JS_NewInt64(ctx: *mut JSContext, val: i64) -> JSValue {
 #[inline(always)]
 pub fn JS_NewUint32(ctx: *mut JSContext, val: u32) -> JSValue {
     if val <= 0x7fffffff {
-        mkval(JS_TAG_INT, val as i32)
+        JS_MKVAL!(JS_TAG_INT, val as i32)
     } else {
         __JS_NewFloat64(ctx, val as f64)
     }
@@ -74,7 +124,7 @@ pub fn JS_NewUint32(ctx: *mut JSContext, val: u32) -> JSValue {
 #[inline(always)]
 pub fn JS_NewFloat64(ctx: *mut JSContext, val: f64) -> JSValue {
     if val as i32 as u64 == val as u64 {
-        mkval(JS_TAG_INT, val as i32)
+        JS_MKVAL!(JS_TAG_INT, val as i32)
     } else {
         __JS_NewFloat64(ctx, val)
     }
@@ -86,6 +136,54 @@ fn __JS_NewFloat64(_ctx: *mut JSContext, val: f64) -> JSValue {
         tag: JS_TAG_FLOAT64 as i64,
         u: JSValueUnion { float64: val },
     }
+}
+
+#[allow(clippy::deref_addrof)]
+#[inline(always)]
+pub unsafe fn JS_FreeValue(ctx: *mut JSContext, v: JSValue) {
+    if JS_VALUE_HAS_REF_COUNT!(v) {
+        let hdr = JS_VALUE_GET_PTR!(&v).cast::<JSRefCountHeader>();
+
+        (*hdr).ref_count -= 1;
+
+        if (*hdr).ref_count <= 0 {
+            __JS_FreeValue(ctx, v)
+        }
+    }
+}
+
+#[allow(clippy::deref_addrof)]
+#[inline(always)]
+pub unsafe fn JS_FreeValueRT(rt: *mut JSRuntime, v: JSValue) {
+    if JS_VALUE_HAS_REF_COUNT!(v) {
+        let hdr = JS_VALUE_GET_PTR!(&v).cast::<JSRefCountHeader>();
+
+        (*hdr).ref_count -= 1;
+
+        if (*hdr).ref_count <= 0 {
+            __JS_FreeValueRT(rt, v)
+        }
+    }
+}
+
+#[inline(always)]
+pub unsafe fn JS_DupValue(_ctx: *mut JSContext, v: *const JSValue) -> JSValue {
+    if JS_VALUE_HAS_REF_COUNT!(*v) {
+        let hdr = JS_VALUE_GET_PTR!(v).cast::<JSRefCountHeader>();
+
+        (*hdr).ref_count += 1;
+    }
+    *v
+}
+
+#[inline(always)]
+pub unsafe fn JS_DupValueRT(_rt: *mut JSRuntime, v: *const JSValue) -> JSValue {
+    if JS_VALUE_HAS_REF_COUNT!(*v) {
+        let hdr = JS_VALUE_GET_PTR!(v).cast::<JSRefCountHeader>();
+
+        (*hdr).ref_count += 1;
+    }
+    *v
 }
 
 impl Default for JSValue {
@@ -128,6 +226,78 @@ impl fmt::Debug for JSValue {
     }
 }
 
+#[inline(always)]
+pub unsafe fn JS_IsNumber(v: *const JSValue) -> bool {
+    let tag = JS_VALUE_GET_TAG!(v);
+
+    tag == JS_TAG_INT || tag == JS_TAG_FLOAT64
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsBigInt(_ctx: *mut JSContext, v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_BIG_INT
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsBigFloat(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_BIG_FLOAT
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsBigDecimal(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_BIG_DECIMAL
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsBool(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_BOOL
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsNull(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_NULL
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsUndefined(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_UNDEFINED
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsException(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_EXCEPTION
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsUninitialized(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_UNINITIALIZED
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsString(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_STRING
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsSymbol(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_SYMBOL
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsModule(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_MODULE
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsFunctionByteCode(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_FUNCTION_BYTECODE
+}
+
+#[inline(always)]
+pub unsafe fn JS_IsObject(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_OBJECT
+}
+
 impl JSValue {
     pub fn check_undefined(self) -> Option<Self> {
         if self.is_undefined() {
@@ -141,66 +311,52 @@ impl JSValue {
         self.tag as i32
     }
 
-    pub fn is_integer(&self) -> bool {
-        let tag = self.tag();
-
-        tag == JS_TAG_INT || tag == JS_TAG_BIG_INT
-    }
-
     pub fn is_number(&self) -> bool {
-        let tag = self.tag();
-
-        tag == JS_TAG_INT || tag == JS_TAG_FLOAT64
-    }
-
-    pub fn is_float(&self) -> bool {
-        let tag = self.tag();
-
-        tag == JS_TAG_FLOAT64 || tag == JS_TAG_BIG_FLOAT
+        unsafe { JS_IsNumber(self) }
     }
 
     pub fn is_big_float(&self) -> bool {
-        self.tag() == JS_TAG_BIG_FLOAT
+        unsafe { JS_IsBigFloat(self) }
     }
 
     pub fn is_bool(&self) -> bool {
-        self.tag() == JS_TAG_BOOL
+        unsafe { JS_IsBool(self) }
     }
 
     pub fn is_null(&self) -> bool {
-        self.tag() == JS_TAG_NULL
+        unsafe { JS_IsNull(self) }
     }
 
     pub fn is_undefined(&self) -> bool {
-        self.tag() == JS_TAG_UNDEFINED
+        unsafe { JS_IsUndefined(self) }
     }
 
     pub fn is_exception(&self) -> bool {
-        self.tag() == JS_TAG_EXCEPTION
+        unsafe { JS_IsException(self) }
     }
 
     pub fn is_uninitialized(&self) -> bool {
-        self.tag() == JS_TAG_UNINITIALIZED
+        unsafe { JS_IsUninitialized(self) }
     }
 
     pub fn is_symbol(&self) -> bool {
-        self.tag() == JS_TAG_SYMBOL
+        unsafe { JS_IsSymbol(self) }
     }
 
     pub fn is_string(&self) -> bool {
-        self.tag() == JS_TAG_STRING
+        unsafe { JS_IsString(self) }
     }
 
     pub fn is_module(&self) -> bool {
-        self.tag() == JS_TAG_MODULE
+        unsafe { JS_IsModule(self) }
     }
 
     pub fn is_function_bytecode(&self) -> bool {
-        self.tag() == JS_TAG_FUNCTION_BYTECODE
+        unsafe { JS_IsFunctionByteCode(self) }
     }
 
     pub fn is_object(&self) -> bool {
-        self.tag() == JS_TAG_OBJECT
+        unsafe { JS_IsObject(self) }
     }
 
     pub fn as_int(&self) -> Option<i32> {
@@ -240,14 +396,10 @@ impl JSValue {
     }
 
     pub fn ref_cnt(&self) -> Option<i32> {
-        if self.has_ref_cnt() {
+        if JS_VALUE_HAS_REF_COUNT!(self) {
             Some(unsafe { self.as_ptr::<JSRefCountHeader>().as_ref().ref_count })
         } else {
             None
         }
-    }
-
-    pub fn has_ref_cnt(&self) -> bool {
-        (self.tag() as u32) >= (JS_TAG_FIRST as u32)
     }
 }

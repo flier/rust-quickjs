@@ -135,17 +135,11 @@ impl<'a> Value<'a> {
 
 impl RuntimeRef {
     pub fn free_value(&self, v: ffi::JSValue) {
-        if !v.is_undefined() && v.has_ref_cnt() {
-            unsafe {
-                let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
+        unsafe { ffi::JS_FreeValueRT(self.as_ptr(), v) }
+    }
 
-                ref_cnt.as_mut().ref_count -= 1;
-
-                if ref_cnt.as_ref().ref_count <= 0 {
-                    ffi::__JS_FreeValueRT(self.as_ptr(), v)
-                }
-            }
-        }
+    pub fn clone_value(&self, v: &ffi::JSValue) -> ffi::JSValue {
+        unsafe { ffi::JS_DupValueRT(self.as_ptr(), v) }
     }
 }
 
@@ -154,28 +148,12 @@ impl ContextRef {
         Local::new(self, value)
     }
 
-    pub fn clone_value(&self, v: &ffi::JSValue) -> ffi::JSValue {
-        unsafe {
-            if v.has_ref_cnt() {
-                v.as_ptr::<ffi::JSRefCountHeader>().as_mut().ref_count += 1;
-            }
-        }
-
-        *v
+    pub fn free_value(&self, v: ffi::JSValue) {
+        unsafe { ffi::JS_FreeValue(self.as_ptr(), v) }
     }
 
-    pub fn free_value(&self, v: ffi::JSValue) {
-        if v.has_ref_cnt() {
-            unsafe {
-                let mut ref_cnt = v.as_ptr::<ffi::JSRefCountHeader>();
-
-                ref_cnt.as_mut().ref_count -= 1;
-
-                if ref_cnt.as_ref().ref_count <= 0 {
-                    ffi::__JS_FreeValue(self.as_ptr(), v)
-                }
-            }
-        }
+    pub fn clone_value(&self, v: &ffi::JSValue) -> ffi::JSValue {
+        unsafe { ffi::JS_DupValue(self.as_ptr(), v) }
     }
 
     pub fn nan(&self) -> Value {
