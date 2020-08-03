@@ -131,7 +131,7 @@ pub fn JS_NewFloat64(ctx: *mut JSContext, val: f64) -> JSValue {
 }
 
 #[inline(always)]
-fn __JS_NewFloat64(_ctx: *mut JSContext, val: f64) -> JSValue {
+const fn __JS_NewFloat64(_ctx: *mut JSContext, val: f64) -> JSValue {
     JSValue {
         tag: JS_TAG_FLOAT64 as i64,
         u: JSValueUnion { float64: val },
@@ -227,6 +227,11 @@ impl fmt::Debug for JSValue {
 }
 
 #[inline(always)]
+pub unsafe fn JS_IsNan(v: *const JSValue) -> bool {
+    JS_VALUE_GET_TAG!(v) == JS_TAG_FLOAT64 && JS_VALUE_GET_FLOAT64!(v).is_nan()
+}
+
+#[inline(always)]
 pub unsafe fn JS_IsNumber(v: *const JSValue) -> bool {
     let tag = JS_VALUE_GET_TAG!(v);
 
@@ -309,6 +314,10 @@ impl JSValue {
 
     pub fn tag(&self) -> i32 {
         self.tag as i32
+    }
+
+    pub fn is_nan(&self) -> bool {
+        unsafe { JS_IsNan(self) }
     }
 
     pub fn is_number(&self) -> bool {
